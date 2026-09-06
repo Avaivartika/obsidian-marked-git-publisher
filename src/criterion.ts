@@ -35,7 +35,7 @@ const registry: Map<CriterionType, typeof Criterion> = new Map()
 
 // Type for criterion class constructors that can be registered
 interface CriterionClass {
-    new(...args: unknown[]): Criterion
+    new(...args: never[]): Criterion
     deserialize(data: SerializedCriterion): Criterion
 }
 

@@ -60,6 +60,17 @@ You can choose to publish (commit and push) or just commit (local only).
 - **Preview publishable files**: Preview files that match the criteria with their status (new, modified, deleted, unmodified).
 - **Ribbon button** (paper plane icon): Quick shortcut to publish notes.
 
+## Development
+
+```bash
+npm install        # install dependencies
+npm run dev        # build in watch mode (for development)
+npm run build      # type-check and build for production
+npm run lint       # run ESLint
+```
+
+To test locally, put `main.js` and `manifest.json` into `<your-vault>/.obsidian/plugins/wikilink-helper/` and reload the plugin.
+
 ## Other information
 
 - [Disclosures](https://docs.obsidian.md/Developer+policies#Disclosures) per Obsidian developer policies:

@@ -6,9 +6,7 @@ on:
       - "*"
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   verify:
@@ -35,6 +33,10 @@ jobs:
   build:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -55,9 +57,14 @@ jobs:
         with:
           subject-path: |
             ./main.js
+            ./manifest.json
             ./styles.css
 
       - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" main.js manifest.json styles.css --title "Release ${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
+        run: >
+          gh release create "${{ github.ref_name }}"
+          main.js manifest.json styles.css
+          --title "Release ${{ github.ref_name }}"
+          --notes "Release ${{ github.ref_name }}"

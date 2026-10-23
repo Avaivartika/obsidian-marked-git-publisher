@@ -15,26 +15,84 @@
 
 /* Criterion editor */
 
-.sp-regex-error {
-    color: var(--text-error);
-    font-size: var(--font-smallest);
+.sp-criterion-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-4-2);
+    padding-block: var(--size-4-1);
 }
 
-.sp-criterion-container {
-    border-left: 2px solid var(--interactive-accent);
-    padding-left: 1em;
+.sp-criterion-body {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: var(--size-4-1);
+}
+
+.sp-criterion-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--size-4-2);
 }
 
-.sp-criterion-container:last-child {
-    margin-bottom: 1em;
+.sp-criterion-row input[type="text"] {
+    flex: 1 1 8em;
+    min-width: 0;
 }
 
-/* Settings */
+.sp-criterion-row .sp-criterion-remove {
+    margin-left: auto;
+}
 
+.sp-criterion-row-extra:empty,
+.sp-pattern-error:empty {
+    display: none;
+}
 
+.sp-criterion-row-extra textarea {
+    width: 100%;
+    min-height: 4em;
+    resize: vertical;
+}
+
+.sp-pattern-input {
+    font-family: var(--font-monospace);
+}
+
+.sp-criterion-children {
+    margin-left: var(--size-4-3);
+    padding-left: var(--size-4-3);
+    border-left: 1px solid var(--background-modifier-border);
+}
+
+button.sp-criterion-add {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    margin-block: var(--size-2-2);
+    padding: var(--size-2-2) var(--size-4-2);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    --icon-size: var(--icon-s);
+}
+
+button.sp-criterion-add:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.sp-pattern-error {
+    color: var(--text-error);
+    font-size: var(--font-ui-smaller);
+}
+
+.sp-pattern-input[aria-invalid="true"] {
+    border-color: var(--text-error);
+}
 
 /* Shared modal layout: fixed buttons at bottom */
 
@@ -68,31 +126,32 @@
     padding: 0.15em 0.5em;
 }
 
+.sp-publish-path {
+    color: var(--sp-status-color, var(--text-normal));
+}
+
 .sp-publish-badge {
     font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
+    color: var(--sp-status-color, var(--text-muted));
     margin-left: 1em;
 }
 
 /* Status-specific colors */
 
-.sp-publish-preview-list li.is-new .sp-publish-path,
-.sp-publish-preview-list li.is-new .sp-publish-badge {
-    color: var(--text-success);
+.sp-publish-preview-list li.is-new {
+    --sp-status-color: var(--text-success);
 }
 
-.sp-publish-preview-list li.is-modified .sp-publish-path,
-.sp-publish-preview-list li.is-modified .sp-publish-badge {
-    color: #e2c08d;  /* TODO: improve for light mode */
+.sp-publish-preview-list li.is-modified {
+    --sp-status-color: #e2c08d;
+}
+
+.sp-publish-preview-list li.is-deleted {
+    --sp-status-color: var(--text-error);
 }
 
 .sp-publish-preview-list li.is-deleted .sp-publish-path {
-    color: var(--text-error);
     text-decoration: line-through;
-}
-
-.sp-publish-preview-list li.is-deleted .sp-publish-badge {
-    color: var(--text-error);
 }
 
 /* Failure modal */

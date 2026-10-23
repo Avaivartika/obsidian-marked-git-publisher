@@ -131,7 +131,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
         const extraPatternsSetting = new Setting(containerEl)
             .setName('Extra file patterns')
             .setDesc('Glob patterns (one per line) for additional vault files to publish, regardless of the publishing criterion. Supports !, #, and ** syntax.')
-        addGlobField(containerEl, extraPatternsSetting, () => this.plugin.settings.extraFilePatterns,
+        addGlobField(extraPatternsSetting, () => this.plugin.settings.extraFilePatterns,
             (value) => {
                 void (async () => {
                     this.plugin.settings.extraFilePatterns = value

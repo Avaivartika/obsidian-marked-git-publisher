@@ -1,56 +1,73 @@
-import { App, Modal, Setting, ButtonComponent } from 'obsidian'
+import { App, Modal, Setting, ButtonComponent, DropdownComponent, TextComponent, TextAreaComponent, ExtraButtonComponent, AbstractTextComponent, setIcon } from 'obsidian'
 import { CriterionType, TextMatchMode, TagMatchMode, FrontmatterMatchMode, Criterion, PatternCriterion, FrontmatterCriterion, ContentCriterion, TitleCriterion, PathCriterion, AndCriterion, OrCriterion, NotCriterion, TagCriterion, isValidGlobPattern, CRITERION_TYPE_NAMES } from './criterion'
 
-// Utility: validate regex pattern
-function isValidRegex(pattern: string): boolean {
+// Validators return an error message, or null if the value is valid
+
+type Validator = (value: string) => string | null
+
+function validateRegex(pattern: string): string | null {
     try {
         new RegExp(pattern)
-        return true
+        return null
     } catch {
-        return false
+        return 'Invalid regex'
     }
 }
 
-// Helper to add a text field with live regex validation
-function addRegexField(container: HTMLElement, setting: Setting, getValue: () => string, setValue: (v: string) => void) {
-    let errorEl: HTMLElement | null = null
+// Validates line-separated .gitignore-like glob patterns
+// Supports: * ** ? [chars] ! (negate) # (comment) leading / (anchor)
+function validateGlobPatterns(value: string): string | null {
+    const invalidLineNumbers = value.split('\n')
+        .map((line, i) => isValidGlobPattern(line, true, true) ? -1 : i + 1)
+        .filter(n => n !== -1)
 
-    setting.addText((text) =>
-        text.setValue(getValue())
-            .onChange((value) => {
-                if (errorEl) { errorEl.remove(); errorEl = null }
-
-                if (!isValidRegex(value)) {
-                    errorEl = container.createDiv({ text: 'Invalid regex', cls: 'sp-pattern-error' })
-                }
-                setValue(value)
-            })
-    )
+    if (invalidLineNumbers.length === 0) return null
+    return invalidLineNumbers.length === 1
+        ? `Invalid glob pattern on line ${invalidLineNumbers[0]}`
+        : `Invalid glob patterns on lines ${invalidLineNumbers.join(', ')}`
 }
 
-// Helper to add a textarea for line-separated .gitignore-like glob patterns with live validation
-// Supports: * ** ? [chars] ! (negate) # (comment) leading / (anchor)
-export function addGlobField(container: HTMLElement, setting: Setting, getValue: () => string, setValue: (v: string) => void) {
-    let errorEl: HTMLElement | null = null
+// Wires live validation to a text component, showing the error message in errorEl
+function attachValidation(component: AbstractTextComponent<HTMLInputElement | HTMLTextAreaElement>, errorEl: HTMLElement, validate: Validator, setValue: (v: string) => void) {
+    component.inputEl.addClass('sp-pattern-input')
+    const check = (value: string) => {
+        const error = validate(value)
+        errorEl.setText(error ?? '')
+        if (error !== null) component.inputEl.setAttribute('aria-invalid', 'true')
+        else component.inputEl.removeAttribute('aria-invalid')
+    }
+    component.onChange((value) => {
+        check(value)
+        setValue(value)
+    })
+    check(component.getValue())
+}
 
-    setting.addTextArea((textArea) =>
-        textArea.setValue(getValue())
-            .onChange((value) => {
-                if (errorEl) { errorEl.remove(); errorEl = null }
+// Helper to add a textarea for glob patterns with live validation to a setting
+export function addGlobField(setting: Setting, getValue: () => string, setValue: (v: string) => void) {
+    // Show the error below the setting rather than inside it
+    const errorEl = setting.settingEl.createDiv({ cls: 'sp-pattern-error' })
+    setting.settingEl.after(errorEl)
+    setting.addTextArea((textArea) => attachValidation(textArea.setValue(getValue()), errorEl, validateGlobPatterns, setValue))
+}
 
-                const invalidLineNumbers = value.split('\n')
-                    .map((line, i) => isValidGlobPattern(line, true, true) ? -1 : i + 1)
-                    .filter(n => n !== -1)
+// Compact inline controls for the criterion editor, labelled by placeholder and aria-label
 
-                if (invalidLineNumbers.length > 0) {
-                    const label = invalidLineNumbers.length === 1
-                        ? `Invalid glob pattern on line ${invalidLineNumbers[0]}`
-                        : `Invalid glob patterns on lines ${invalidLineNumbers.join(', ')}`
-                    errorEl = container.createDiv({ text: label, cls: 'sp-pattern-error' })
-                }
-                setValue(value)
-            })
-    )
+function addDropdown<T extends string>(parent: HTMLElement, options: readonly T[], value: T, label: string, onChange: (v: T) => void) {
+    const dropdown = new DropdownComponent(parent)
+    for (const option of options)
+        dropdown.addOption(option, option)
+    dropdown.setValue(value).onChange((v) => onChange(v as T))
+    dropdown.selectEl.setAttribute('aria-label', label)
+}
+
+function addTextField(component: AbstractTextComponent<HTMLInputElement | HTMLTextAreaElement>, value: string, label: string, setValue: (v: string) => void, validation?: { errorEl: HTMLElement, validate: Validator }) {
+    component.setValue(value).setPlaceholder(label)
+    component.inputEl.setAttribute('aria-label', label)
+    if (validation)
+        attachValidation(component, validation.errorEl, validation.validate, setValue)
+    else
+        component.onChange(setValue)
 }
 
 export class CriterionEditorModal extends Modal {
@@ -69,10 +86,9 @@ export class CriterionEditorModal extends Modal {
 
         contentEl.empty()
         modalEl.addClass('sp-modal-fixed-footer')
-        contentEl.createEl('h2', { text: 'Edit publishing criterion' })
+        this.setTitle('Edit publishing criterion')
 
-        const outerCriterionContainer = contentEl.createDiv({ cls: 'sp-outer-criterion-container' })
-        this.renderCriterion(outerCriterionContainer, this.rootCriterion, 0, null, -1)
+        this.renderCriterion(contentEl.createDiv(), this.rootCriterion, (c) => this.rootCriterion = c)
 
         const btnContainer = modalEl.createDiv('modal-button-container')
 
@@ -91,127 +107,98 @@ export class CriterionEditorModal extends Modal {
             })
     }
 
-    renderCriterion(container: HTMLElement, criterion: Criterion, depth: number, parent: AndCriterion | OrCriterion | NotCriterion | null, index: number, onDelete?: () => void) {
+    // replace swaps this criterion for a new one in its parent (or at the root)
+    renderCriterion(container: HTMLElement, criterion: Criterion, replace: (c: Criterion) => void, onDelete?: () => void) {
         container.empty()
 
-        const criterionContainer = container.createDiv({ cls: 'sp-criterion-container' })
+        const rerender = () => this.renderCriterion(container, criterion, replace, onDelete)
 
-        // Type dropdown
-        const headerSetting = new Setting(criterionContainer)
-            .setName('Criterion type')
-            .addDropdown((dropdown) => {
-                for (const type of CRITERION_TYPE_NAMES)
-                    dropdown.addOption(type, type)
+        // The type dropdown is followed by a body, so that continuation rows align with the first field
+        const itemEl = container.createDiv({ cls: 'sp-criterion-item' })
 
-                dropdown.setValue(criterion.getType())
-                    .onChange((value: string) => {
-                        const newCriterion = this.createDefaultCriterionByType(value as CriterionType)
+        addDropdown(itemEl, CRITERION_TYPE_NAMES, criterion.getType(), 'Criterion type', (value) => {
+            const newCriterion = this.createDefaultCriterionByType(value)
+            replace(newCriterion)
+            this.renderCriterion(container, newCriterion, replace, onDelete)
+        })
 
-                        if (depth === 0) {
-                            this.rootCriterion = newCriterion
-                        } else if (parent instanceof AndCriterion || parent instanceof OrCriterion) {
-                            parent.criteria[index] = newCriterion
-                        } else if (parent instanceof NotCriterion) {
-                            parent.criterion = newCriterion
-                        }
+        const bodyEl = itemEl.createDiv({ cls: 'sp-criterion-body' })
+        // A single row holds the inline fields
+        const row = bodyEl.createDiv({ cls: 'sp-criterion-row' })
+        // Multi-line fields and validation errors go below the row
+        const extraEl = bodyEl.createDiv({ cls: 'sp-criterion-row-extra' })
+        const errorEl = bodyEl.createDiv({ cls: 'sp-pattern-error' })
 
-                        this.renderCriterion(container, newCriterion, depth, parent, index, onDelete)
-                    })
+        // Changing the match mode changes which fields are shown
+        const addModeDropdown = <T extends string>(modes: readonly T[], value: T, setMode: (v: T) => void) =>
+            addDropdown(row, modes, value, 'Match mode', (v) => {
+                setMode(v)
+                rerender()
             })
-
-        if (onDelete) {
-            headerSetting.addExtraButton((btn) => btn
-                .setIcon('cross')
-                .setTooltip('Remove criterion')
-                .onClick(onDelete)
-            )
-        }
-
-        const makeSubcriterionContainer = (): HTMLElement => {
-            return criterionContainer.createDiv({ cls: 'sp-subcriterion-container' })
-        }
 
         // Render type-specific fields
         if (criterion instanceof FrontmatterCriterion) {
-            new Setting(criterionContainer).setName('Property name')
-                .addText((text) => text.setValue(criterion.key).onChange((v) => criterion.key = v))
-            const propertySetting = new Setting(criterionContainer).setName('Property value')
-                .addDropdown((dropdown) => {
-                    for (const mode of Object.values(FrontmatterMatchMode))
-                        dropdown.addOption(mode, mode)
-                    dropdown.setValue(criterion.matchMode)
-                        .onChange((v) => {
-                            criterion.matchMode = v as FrontmatterMatchMode
-                            this.renderCriterion(container, criterion, depth, parent, index, onDelete)
-                        })
-                })
-
+            addTextField(new TextComponent(row), criterion.key, 'Property', (v) => criterion.key = v)
+            addModeDropdown(Object.values(FrontmatterMatchMode), criterion.matchMode, (v) => criterion.matchMode = v)
             if (criterion.matchMode !== FrontmatterMatchMode.Exists) {
-                if (criterion.matchMode === FrontmatterMatchMode.Regex) {
-                    addRegexField(criterionContainer, propertySetting, () => criterion.value, (v) => criterion.value = v)
-                } else {
-                    propertySetting.addText((text) => text.setValue(criterion.value).onChange((v) => criterion.value = v))
-                }
+                const validation = criterion.matchMode === FrontmatterMatchMode.Regex ? { errorEl, validate: validateRegex } : undefined
+                addTextField(new TextComponent(row), criterion.value, 'Value', (v) => criterion.value = v, validation)
             }
 
         } else if (criterion instanceof TagCriterion) {
-            new Setting(criterionContainer).setName('Tag')
-                .addDropdown((dropdown) => {
-                    for (const mode of Object.values(TagMatchMode))
-                        dropdown.addOption(mode, mode)
-                    dropdown.setValue(criterion.matchMode)
-                        .onChange((v) => {
-                            criterion.matchMode = v as TagMatchMode
-                            this.renderCriterion(container, criterion, depth, parent, index, onDelete)
-                        })
-                })
-                .addText((text) => text.setValue(criterion.tag).onChange((v) => criterion.tag = v))
+            addModeDropdown(Object.values(TagMatchMode), criterion.matchMode, (v) => criterion.matchMode = v)
+            addTextField(new TextComponent(row), criterion.tag, 'Tag', (v) => criterion.tag = v)
 
         } else if (criterion instanceof PatternCriterion) {
-            const patternSetting = new Setting(criterionContainer).setName(criterion.getType())
-            patternSetting.addDropdown((dropdown) => {
-                for (const mode of Object.values(TextMatchMode))
-                    dropdown.addOption(mode, mode)
-                dropdown.setValue(criterion.matchMode)
-                    .onChange((v) => {
-                        criterion.matchMode = v as TextMatchMode
-                        this.renderCriterion(container, criterion, depth, parent, index, onDelete)
-                    })
-            })
+            addModeDropdown(Object.values(TextMatchMode), criterion.matchMode, (v) => criterion.matchMode = v)
+            const setPattern = (v: string) => criterion.pattern = v
             switch (criterion.matchMode) {
                 case TextMatchMode.Regex:
-                    addRegexField(criterionContainer, patternSetting, () => criterion.pattern, (v) => criterion.pattern = v)
+                    addTextField(new TextComponent(row), criterion.pattern, 'Regular expression', setPattern, { errorEl, validate: validateRegex })
                     break
                 case TextMatchMode.Glob:
-                    addGlobField(criterionContainer, patternSetting, () => criterion.pattern, (v) => criterion.pattern = v)
+                    addTextField(new TextAreaComponent(extraEl), criterion.pattern, 'Glob patterns, one per line', setPattern, { errorEl, validate: validateGlobPatterns })
                     break
                 case TextMatchMode.Contains:
                 default:
-                    patternSetting.addText((text) => text.setValue(criterion.pattern).onChange((v) => criterion.pattern = v))
+                    addTextField(new TextComponent(row), criterion.pattern, 'Text', setPattern)
                     break
             }
 
         } else if (criterion instanceof ContentCriterion) {
-            const setting = new Setting(criterionContainer).setName('Content regex')
-            addRegexField(criterionContainer, setting, () => criterion.regex, (v) => criterion.regex = v)
+            addTextField(new TextComponent(row), criterion.regex, 'Regular expression', (v) => criterion.regex = v, { errorEl, validate: validateRegex })
+        }
 
-        } else if (criterion instanceof AndCriterion || criterion instanceof OrCriterion) {
+        if (onDelete) {
+            new ExtraButtonComponent(row)
+                .setIcon('cross')
+                .setTooltip('Remove criterion')
+                .onClick(onDelete)
+                .extraSettingsEl.addClass('sp-criterion-remove')
+        }
+
+        // Render sub-criteria, indented below the row
+        if (criterion instanceof AndCriterion || criterion instanceof OrCriterion) {
+            const childrenEl = container.createDiv({ cls: 'sp-criterion-children' })
             criterion.criteria.forEach((sub, i) => {
-                const subContainer = makeSubcriterionContainer()
                 const subOnDelete = () => {
                     criterion.criteria.splice(i, 1)
-                    this.renderCriterion(container, criterion, depth, parent, index, onDelete)
+                    rerender()
                 }
-                this.renderCriterion(subContainer, sub, depth + 1, criterion, i, subOnDelete)
+                this.renderCriterion(childrenEl.createDiv(), sub, (c) => criterion.criteria[i] = c, subOnDelete)
             })
-            new Setting(criterionContainer).addButton((btn) => btn
-                .setButtonText('Add sub-criterion').onClick(() => {
-                    criterion.criteria.push(this.createDefaultCriterionByType('Frontmatter'))
-                    this.renderCriterion(container, criterion, depth, parent, index, onDelete)
-                }))
+
+            const addButton = childrenEl.createEl('button', { cls: 'sp-criterion-add' })
+            setIcon(addButton.createSpan(), 'plus')
+            addButton.createSpan({ text: 'Add condition' })
+            addButton.onClickEvent(() => {
+                criterion.criteria.push(this.createDefaultCriterionByType('Frontmatter'))
+                rerender()
+            })
 
         } else if (criterion instanceof NotCriterion) {
-            this.renderCriterion(makeSubcriterionContainer(), criterion.criterion, depth + 1, criterion, 0)
+            const childrenEl = container.createDiv({ cls: 'sp-criterion-children' })
+            this.renderCriterion(childrenEl.createDiv(), criterion.criterion, (c) => criterion.criterion = c)
         }
     }
 

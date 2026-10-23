@@ -42,7 +42,8 @@
     min-width: 0;
 }
 
-.sp-criterion-row .sp-criterion-remove {
+.sp-criterion-actions {
+    display: flex;
     margin-left: auto;
 }
 

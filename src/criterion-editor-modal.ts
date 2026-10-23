@@ -1,5 +1,5 @@
-import { App, Modal, Setting, ButtonComponent, DropdownComponent, TextComponent, TextAreaComponent, ExtraButtonComponent, AbstractTextComponent, setIcon } from 'obsidian'
-import { CriterionType, TextMatchMode, TagMatchMode, FrontmatterMatchMode, Criterion, PatternCriterion, FrontmatterCriterion, ContentCriterion, TitleCriterion, PathCriterion, AndCriterion, OrCriterion, NotCriterion, TagCriterion, isValidGlobPattern, CRITERION_TYPE_NAMES } from './criterion'
+import { App, Modal, Menu, Setting, ButtonComponent, DropdownComponent, TextComponent, TextAreaComponent, ExtraButtonComponent, AbstractTextComponent, setIcon } from 'obsidian'
+import { LeafCriterionType, TextMatchMode, TagMatchMode, FrontmatterMatchMode, Criterion, PatternCriterion, FrontmatterCriterion, ContentCriterion, TitleCriterion, PathCriterion, AndCriterion, OrCriterion, NotCriterion, TagCriterion, isValidGlobPattern, LEAF_CRITERION_TYPES, GROUP_CRITERION_TYPES, isGroupType, getChildren, wrapCriterion, convertGroup } from './criterion'
 
 // Validators return an error message, or null if the value is valid
 
@@ -70,6 +70,14 @@ function addTextField(component: AbstractTextComponent<HTMLInputElement | HTMLTe
         component.onChange(setValue)
 }
 
+// The place a criterion occupies: the root, the operand of a Not, or an entry of an And/Or
+interface Slot {
+    // Stores a replacement criterion in the parent
+    set: (c: Criterion) => void
+    // Only for And/Or entries: replaces the criterion with zero or several and re-renders the parent
+    splice?: (criteria: Criterion[]) => void
+}
+
 export class CriterionEditorModal extends Modal {
     rootCriterion: Criterion
     onSave: (updatedCriterion: Criterion) => void
@@ -88,7 +96,7 @@ export class CriterionEditorModal extends Modal {
         modalEl.addClass('sp-modal-fixed-footer')
         this.setTitle('Edit publishing criterion')
 
-        this.renderCriterion(contentEl.createDiv(), this.rootCriterion, (c) => this.rootCriterion = c)
+        this.renderCriterion(contentEl.createDiv(), this.rootCriterion, { set: (c) => this.rootCriterion = c })
 
         const btnContainer = modalEl.createDiv('modal-button-container')
 
@@ -107,20 +115,31 @@ export class CriterionEditorModal extends Modal {
             })
     }
 
-    // replace swaps this criterion for a new one in its parent (or at the root)
-    renderCriterion(container: HTMLElement, criterion: Criterion, replace: (c: Criterion) => void, onDelete?: () => void) {
+    renderCriterion(container: HTMLElement, criterion: Criterion, slot: Slot) {
         container.empty()
 
-        const rerender = () => this.renderCriterion(container, criterion, replace, onDelete)
+        const rerender = () => this.renderCriterion(container, criterion, slot)
+        const replace = (c: Criterion) => {
+            slot.set(c)
+            this.renderCriterion(container, c, slot)
+        }
 
         // The type dropdown is followed by a body, so that continuation rows align with the first field
         const itemEl = container.createDiv({ cls: 'sp-criterion-item' })
 
-        addDropdown(itemEl, CRITERION_TYPE_NAMES, criterion.getType(), 'Criterion type', (value) => {
-            const newCriterion = this.createDefaultCriterionByType(value)
-            replace(newCriterion)
-            this.renderCriterion(container, newCriterion, replace, onDelete)
-        })
+        // The type can only change within leaves or within groups, so no sub-criteria are lost
+        // Moving between the two is done by wrapping and unwrapping
+        const onTypeChange = (c: Criterion) => {
+            replace(c)
+            container.querySelector('select')?.focus()
+        }
+        const currentType = criterion.getType()
+        if (isGroupType(currentType))
+            addDropdown(itemEl, GROUP_CRITERION_TYPES, currentType, 'Criterion type',
+                (type) => onTypeChange(convertGroup(criterion, type)))
+        else
+            addDropdown(itemEl, LEAF_CRITERION_TYPES, currentType, 'Criterion type',
+                (type) => onTypeChange(this.createDefaultCriterionByType(type)))
 
         const bodyEl = itemEl.createDiv({ cls: 'sp-criterion-body' })
         // A single row holds the inline fields
@@ -169,23 +188,41 @@ export class CriterionEditorModal extends Modal {
             addTextField(new TextComponent(row), criterion.regex, 'Regular expression', (v) => criterion.regex = v, { errorEl, validate: validateRegex })
         }
 
-        if (onDelete) {
-            new ExtraButtonComponent(row)
+        const createMenu = () => this.createActionsMenu(criterion, slot, replace)
+        const actionsEl = row.createDiv({ cls: 'sp-criterion-actions' })
+        const menuButton = new ExtraButtonComponent(actionsEl)
+            .setIcon('more-vertical')
+            .setTooltip('More actions')
+        menuButton.onClick(() => {
+            const rect = menuButton.extraSettingsEl.getBoundingClientRect()
+            createMenu().showAtPosition({ x: rect.left, y: rect.bottom })
+        })
+        const splice = slot.splice
+        if (splice) {
+            new ExtraButtonComponent(actionsEl)
                 .setIcon('cross')
                 .setTooltip('Remove criterion')
-                .onClick(onDelete)
-                .extraSettingsEl.addClass('sp-criterion-remove')
+                .onClick(() => splice([]))
         }
+
+        // Right-click opens the same menu, except in text fields, which keep their native menu
+        itemEl.addEventListener('contextmenu', (evt) => {
+            if ((evt.target as HTMLElement).closest('input, textarea')) return
+            evt.preventDefault()
+            createMenu().showAtMouseEvent(evt)
+        })
 
         // Render sub-criteria, indented below the row
         if (criterion instanceof AndCriterion || criterion instanceof OrCriterion) {
             const childrenEl = container.createDiv({ cls: 'sp-criterion-children' })
             criterion.criteria.forEach((sub, i) => {
-                const subOnDelete = () => {
-                    criterion.criteria.splice(i, 1)
-                    rerender()
-                }
-                this.renderCriterion(childrenEl.createDiv(), sub, (c) => criterion.criteria[i] = c, subOnDelete)
+                this.renderCriterion(childrenEl.createDiv(), sub, {
+                    set: (c) => criterion.criteria[i] = c,
+                    splice: (cs) => {
+                        criterion.criteria.splice(i, 1, ...cs)
+                        rerender()
+                    },
+                })
             })
 
             const addButton = childrenEl.createEl('button', { cls: 'sp-criterion-add' })
@@ -198,21 +235,46 @@ export class CriterionEditorModal extends Modal {
 
         } else if (criterion instanceof NotCriterion) {
             const childrenEl = container.createDiv({ cls: 'sp-criterion-children' })
-            this.renderCriterion(childrenEl.createDiv(), criterion.criterion, (c) => criterion.criterion = c)
+            this.renderCriterion(childrenEl.createDiv(), criterion.criterion, { set: (c) => criterion.criterion = c })
         }
     }
 
-    createDefaultCriterionByType(type: CriterionType): Criterion {
+    // Menu for restructuring the tree without losing sub-criteria
+    createActionsMenu(criterion: Criterion, slot: Slot, replace: (c: Criterion) => void): Menu {
+        const menu = new Menu()
+
+        for (const type of GROUP_CRITERION_TYPES) {
+            menu.addItem((item) => item
+                .setTitle(`Wrap in ${type}`)
+                .setIcon('group')
+                .onClick(() => replace(wrapCriterion(criterion, type))))
+        }
+
+        // A single child takes the group's place, while other counts need a slot that accepts several
+        const children = getChildren(criterion)
+        const splice = slot.splice
+        const onlyChild = children?.length === 1 ? children[0] : undefined
+        let unwrap: (() => void) | undefined
+        if (onlyChild) unwrap = () => replace(onlyChild)
+        else if (children && splice) unwrap = () => splice(children)
+        if (unwrap) {
+            menu.addSeparator()
+            menu.addItem((item) => item
+                .setTitle('Unwrap')
+                .setIcon('ungroup')
+                .onClick(unwrap))
+        }
+
+        return menu
+    }
+
+    createDefaultCriterionByType(type: LeafCriterionType): Criterion {
         switch (type) {
             case 'Tag': return new TagCriterion('public')
             case 'Frontmatter': return new FrontmatterCriterion('public', 'true', FrontmatterMatchMode.Equals)
             case 'Title': return new TitleCriterion('^[^_].*', TextMatchMode.Regex)
             case 'Path': return new PathCriterion('^**/.*\n_*', TextMatchMode.Glob)
             case 'Content': return new ContentCriterion('^(?!.*#todo)(?!.*#private).*')
-            case 'And': return new AndCriterion([this.createDefaultCriterionByType('Tag')])
-            case 'Or': return new OrCriterion([this.createDefaultCriterionByType('Tag')])
-            case 'Not': return new NotCriterion(new TagCriterion('private'))
-            default: throw new Error(`Unknown criterion type: ${type as string}`)
         }
     }
 }

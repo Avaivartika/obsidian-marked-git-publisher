@@ -4,8 +4,16 @@ import picomatch from 'picomatch'
 // Serialization
 
 // Type derived from class names (e.g., 'Tag' from TagCriterion)
-export const CRITERION_TYPE_NAMES = ['Tag', 'Frontmatter', 'Title', 'Path', 'Content', 'And', 'Or', 'Not'] as const
-export type CriterionType = typeof CRITERION_TYPE_NAMES[number]
+// Leaf criteria test a note directly, group criteria hold sub-criteria
+export const LEAF_CRITERION_TYPES = ['Tag', 'Frontmatter', 'Title', 'Path', 'Content'] as const
+export const GROUP_CRITERION_TYPES = ['And', 'Or', 'Not'] as const
+export type LeafCriterionType = typeof LEAF_CRITERION_TYPES[number]
+export type GroupCriterionType = typeof GROUP_CRITERION_TYPES[number]
+export type CriterionType = LeafCriterionType | GroupCriterionType
+
+export function isGroupType(type: CriterionType): type is GroupCriterionType {
+    return (GROUP_CRITERION_TYPES as readonly string[]).includes(type)
+}
 
 export enum TextMatchMode {
     Contains = 'contains',
@@ -363,6 +371,33 @@ export class NotCriterion extends Criterion {
     static deserialize(data: SerializedCriterion): NotCriterion {
         return new NotCriterion(Criterion.deserialize(data.criterion as SerializedCriterion))
     }
+}
+
+// Criteria that hold sub-criteria
+
+// Returns a copy of the sub-criteria of an And/Or/Not, or null for other criteria
+export function getChildren(criterion: Criterion): Criterion[] | null {
+    if (criterion instanceof AndCriterion || criterion instanceof OrCriterion) return [...criterion.criteria]
+    if (criterion instanceof NotCriterion) return [criterion.criterion]
+    return null
+}
+
+export function wrapCriterion(criterion: Criterion, type: GroupCriterionType): Criterion {
+    switch (type) {
+        case 'And': return new AndCriterion([criterion])
+        case 'Or': return new OrCriterion([criterion])
+        case 'Not': return new NotCriterion(criterion)
+    }
+}
+
+// Converts a group to another group type, keeping its sub-criteria
+export function convertGroup(group: Criterion, type: GroupCriterionType): Criterion {
+    const children = getChildren(group) ?? [group]
+    const [onlyChild] = children
+    if (children.length === 1 && onlyChild) return wrapCriterion(onlyChild, type)
+    // A Not holds one criterion, so a group with several children is negated as a whole
+    if (type === 'Not') return new NotCriterion(group)
+    return type === 'And' ? new AndCriterion(children) : new OrCriterion(children)
 }
 
 function extractTagsFromContent(content: string): string[] {

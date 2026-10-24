@@ -120,7 +120,9 @@ export default class SelectivePublisherPlugin extends Plugin {
                 return
             }
 
-            const modal = new PublishPreviewModal(this.app, fileStatuses, hasUncommittedChanges, (action: PublishAction) => this.publishNotes(action === 'commit', true, publishableFiles))
+            const modal = new PublishPreviewModal(this.app, fileStatuses, hasUncommittedChanges,
+                (action: PublishAction) => this.publishNotes(action === 'commit', true, publishableFiles),
+                (path: string) => this.publishingService.getFileDiff(path))
             modal.open()
         } catch (error) {
             console.error('Preview failed:', error)

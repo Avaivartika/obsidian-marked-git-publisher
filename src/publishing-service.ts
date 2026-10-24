@@ -1,7 +1,9 @@
-import { App, TFile } from 'obsidian'
+import { App, FileSystemAdapter, TFile } from 'obsidian'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Buffer } from "buffer"
+import { GitHelper } from './git-service'
+import { FileDiff } from './diff-parser'
 
 export enum FileUpdateStatus {
     New = 'new',
@@ -23,7 +25,7 @@ export class PublishingService {
         const fileStatuses: FileWithStatus[] = await Promise.all(
             publishableFiles.map(async (file) => ({
                 path: file.path,
-                status: await this.getFileStatus(file, path.join(this.repoPath, file.path)),
+                status: await this.getFileStatus(file, this.resolveRepoPath(file.path)),
             }))
         )
 
@@ -40,6 +42,18 @@ export class PublishingService {
     public async updateFilesInRepo(publishableFiles: TFile[]): Promise<void> {
         await this.cleanupRepo(publishableFiles)
         await this.copyFilesToRepo(publishableFiles)
+    }
+
+    /** Returns the diff between the published copy of a file and its current vault version. */
+    public async getFileDiff(filePath: string): Promise<FileDiff> {
+        const adapter = this.app.vault.adapter
+        if (!(adapter instanceof FileSystemAdapter)) throw new Error('Diffs require a file system vault.')
+        return GitHelper.diffFiles(this.repoPath, this.resolveRepoPath(filePath), adapter.getFullPath(filePath))
+    }
+
+    /** Returns the absolute path of a vault file's published copy. */
+    private resolveRepoPath(relativePath: string): string {
+        return path.join(this.repoPath, relativePath)
     }
 
     private async getFileStatus(srcFile: TFile, destPath: string): Promise<FileUpdateStatus> {
@@ -111,7 +125,7 @@ export class PublishingService {
     }
 
     private async copyFileToRepo(file: TFile) {
-        const destPath = path.join(this.repoPath, file.path)
+        const destPath = this.resolveRepoPath(file.path)
         await fs.mkdir(path.dirname(destPath), { recursive: true })
 
         if (file.extension === 'md') {
@@ -128,7 +142,7 @@ export class PublishingService {
 
     private async deleteFileFromRepo(relativePath: string) {
         try {
-            const destPath = path.join(this.repoPath, relativePath)
+            const destPath = this.resolveRepoPath(relativePath)
             // Check if file exists before attempting to delete
             try {
                 await fs.access(destPath)

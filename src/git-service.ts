@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { FileDiff, parseDiff } from './diff-parser'
 
 const execFileAsync = promisify(execFile)
 
@@ -118,6 +119,18 @@ export class GitHelper {
             return stdout.trim().length > 0
         } catch (error) {
             this.handleGitError(repoPath, error, 'check status')
+        }
+    }
+
+    static async diffFiles(repoPath: string, oldPath: string, newPath: string): Promise<FileDiff> {
+        try {
+            const { stdout } = await execFileAsync('git', ['diff', '--no-index', '--no-color', '--', oldPath, newPath], { cwd: repoPath })
+            return parseDiff(stdout)
+        } catch (error) {
+            // git diff --no-index exits with code 1 when the files differ
+            const execError = toExecFileError(error)
+            if (execError.code !== 1 || execError.stdout === undefined) this.handleGitError(repoPath, error, 'diff files')
+            return parseDiff(execError.stdout)
         }
     }
 }

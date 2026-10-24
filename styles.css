@@ -122,19 +122,32 @@ button.sp-criterion-add:hover {
 
 .sp-publish-preview-list li {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
     padding: 0.15em 0.5em;
 }
 
 .sp-publish-path {
+    overflow-wrap: anywhere;
     color: var(--sp-status-color, var(--text-normal));
+}
+
+.sp-publish-preview-list .clickable-icon {
+    margin-left: 0.25em;
+    padding: var(--size-2-1);
+    opacity: 0;
+}
+
+.sp-publish-preview-list li:hover .clickable-icon,
+.sp-publish-preview-list .clickable-icon:focus-visible {
+    opacity: 1;
 }
 
 .sp-publish-badge {
     font-size: var(--font-ui-smaller);
     color: var(--sp-status-color, var(--text-muted));
-    margin-left: 1em;
+    margin-left: auto;
+    padding-left: 1em;
 }
 
 /* Status-specific colors */
@@ -153,6 +166,94 @@ button.sp-criterion-add:hover {
 
 .sp-publish-preview-list li.is-deleted .sp-publish-path {
     text-decoration: line-through;
+}
+
+/* Diff of modified files */
+
+.sp-publish-path.is-clickable {
+    cursor: pointer;
+}
+
+.sp-publish-path.is-clickable:hover {
+    text-decoration: underline;
+}
+
+.sp-publish-diff {
+    flex-basis: 100%;
+    margin: 0.3em 0;
+    max-height: 20em;
+    overflow: auto;
+    font-family: var(--font-monospace);
+    font-size: var(--font-smallest);
+    line-height: 1.5;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    user-select: text;
+}
+
+.sp-diff-message {
+    padding: 0.5em;
+    white-space: pre-wrap;
+    color: var(--text-muted);
+}
+
+.sp-publish-diff table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.sp-publish-diff td {
+    padding: 0 0.5em;
+    border: none;
+    vertical-align: top;
+}
+
+.sp-publish-diff :is(.sp-diff-num, .sp-diff-sign) {
+    width: 1px;
+    white-space: nowrap;
+    text-align: right;
+    color: var(--text-faint);
+    user-select: none;
+}
+
+.sp-publish-diff .sp-diff-sign {
+    padding: 0 0.25em;
+}
+
+.sp-publish-diff .sp-diff-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.sp-publish-diff tr.is-added {
+    --sp-diff-rgb: var(--color-green-rgb);
+    --sp-diff-color: var(--text-success);
+}
+
+.sp-publish-diff tr.is-removed {
+    --sp-diff-rgb: var(--color-red-rgb);
+    --sp-diff-color: var(--text-error);
+}
+
+.sp-publish-diff :is(tr.is-added, tr.is-removed) {
+    background-color: rgba(var(--sp-diff-rgb), 0.12);
+}
+
+.sp-publish-diff :is(tr.is-added, tr.is-removed) :is(.sp-diff-num, .sp-diff-sign) {
+    background-color: rgba(var(--sp-diff-rgb), 0.2);
+    color: var(--sp-diff-color);
+}
+
+.sp-publish-diff .sp-diff-emphasis {
+    background-color: rgba(var(--sp-diff-rgb), 0.35);
+    border-radius: 2px;
+}
+
+.sp-publish-diff tr.is-hunk td {
+    padding: 0.15em 0.5em;
+    color: var(--text-muted);
+    background-color: var(--background-secondary);
 }
 
 /* Failure modal */

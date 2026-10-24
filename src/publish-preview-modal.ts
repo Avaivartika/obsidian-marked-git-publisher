@@ -1,10 +1,13 @@
-import { App, Modal, ButtonComponent } from 'obsidian'
+import { App, Modal, ButtonComponent, ExtraButtonComponent } from 'obsidian'
 import { FileWithStatus, FileUpdateStatus } from './publishing-service'
+import { FileDiff } from './diff-parser'
+import { renderDiff } from './diff-view'
 
 export type PublishAction = 'publish' | 'commit'
 
 export class PublishPreviewModal extends Modal {
-    constructor(app: App, private fileStatuses: FileWithStatus[], private hasUncommittedChanges: boolean, private onAction: (action: PublishAction) => Promise<void>) {
+    constructor(app: App, private fileStatuses: FileWithStatus[], private hasUncommittedChanges: boolean,
+        private onAction: (action: PublishAction) => Promise<void>, private getDiff: (path: string) => Promise<FileDiff>) {
         super(app)
     }
 
@@ -63,10 +66,43 @@ export class PublishPreviewModal extends Modal {
 
         for (const { path, status } of files) {
             const li = listEl.createEl('li', { cls: `is-${status}` })
-            li.createSpan({ text: path, cls: 'sp-publish-path' })
+            const pathEl = li.createSpan({ text: path, cls: 'sp-publish-path' })
+            if (status === FileUpdateStatus.Modified) {
+                pathEl.addClass('is-clickable')
+                pathEl.setAttr('aria-label', 'Show changes')
+                pathEl.onClickEvent(() => this.toggleDiff(li, path))
+            }
+            if (status !== FileUpdateStatus.Deleted) {
+                new ExtraButtonComponent(li)
+                    .setIcon('file-symlink')
+                    .setTooltip('Open file')
+                    .onClick(() => {
+                        this.close()
+                        void this.app.workspace.openLinkText(path, '', 'tab')
+                    })
+            }
             if (!hideBadge) {
                 li.createSpan({ text: status, cls: 'sp-publish-badge' })
             }
+        }
+    }
+
+    private async toggleDiff(li: HTMLElement, path: string) {
+        // Keep a loaded diff around so collapsing and expanding it again doesn't rerun git
+        const existing = li.querySelector<HTMLElement>('.sp-publish-diff')
+        if (existing) {
+            existing.hidden = !existing.hidden
+            return
+        }
+
+        const diffEl = li.createDiv('sp-publish-diff')
+        const messageEl = diffEl.createDiv({ cls: 'sp-diff-message', text: 'Loading changes…' })
+        try {
+            const diff = await this.getDiff(path)
+            messageEl.remove()
+            renderDiff(diffEl, diff)
+        } catch (error) {
+            messageEl.setText(`Failed to load changes: ${error instanceof Error ? error.message : String(error)}`)
         }
     }
 

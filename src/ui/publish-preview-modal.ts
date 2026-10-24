@@ -1,6 +1,6 @@
 import { App, Modal, ButtonComponent, ExtraButtonComponent } from 'obsidian'
-import { FileWithStatus, FileUpdateStatus } from './publishing-service'
-import { FileDiff } from './diff-parser'
+import { FileWithStatus, FileUpdateStatus } from '../publishing/publishing-service'
+import { FileDiff } from '../publishing/diff-parser'
 import { renderDiff } from './diff-view'
 
 export type PublishAction = 'publish' | 'commit'

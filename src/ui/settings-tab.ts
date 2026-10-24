@@ -1,7 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice, DropdownComponent, TextComponent } from 'obsidian'
-import SelectivePublisherPlugin from './main'
+import SelectivePublisherPlugin from '../main'
 import { CriterionEditorModal, addGlobField } from './criterion-editor-modal'
-import { GitHelper } from './git-service'
+import { GitHelper } from '../publishing/git-helper'
 import { dialog } from '@electron/remote'
 
 export class SelectivePublisherSettingTab extends PluginSettingTab {
@@ -140,7 +140,6 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
             }
         )
 
-        // Initial validation
         void this.validateAndRefreshRepoBranches(repoBranchDropdown!)
     }
 
@@ -158,7 +157,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
         const branches = await GitHelper.getBranches(this.plugin.settings.repo)
             .catch(() => [] as string[])
 
-        // Clear existing options
+        // Rebuilds the options from the current branches
         const selectEl = dropdown.selectEl
         selectEl.empty()
 
@@ -172,9 +171,8 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
                 dropdown.addOption(branch, branch)
             })
 
-            // Ensure a valid branch is selected
             if (!branches.includes(this.plugin.settings.repoBranch)) {
-                // If current branch is not in list, select the first one and save
+                // Falls back to the first branch, and saves it, if the current one is not listed
                 this.plugin.settings.repoBranch = branches[0]!
                 await this.plugin.saveSettings()
             }

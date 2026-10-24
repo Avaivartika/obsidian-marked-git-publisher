@@ -1,4 +1,4 @@
-import { DiffLine, DiffLineKind, FileDiff } from './diff-parser'
+import { DiffLine, DiffLineKind, FileDiff } from '../publishing/diff-parser'
 
 const SIGNS: Partial<Record<DiffLineKind, string>> = { added: '+', removed: '−' }
 // Words, whitespace runs, and single punctuation characters

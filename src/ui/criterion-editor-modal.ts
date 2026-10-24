@@ -1,5 +1,6 @@
 import { App, Modal, Menu, Setting, ButtonComponent, DropdownComponent, TextComponent, TextAreaComponent, ExtraButtonComponent, AbstractTextComponent, setIcon } from 'obsidian'
-import { LeafCriterionType, TextMatchMode, TagMatchMode, FrontmatterMatchMode, Criterion, PatternCriterion, FrontmatterCriterion, ContentCriterion, TitleCriterion, PathCriterion, AndCriterion, OrCriterion, NotCriterion, TagCriterion, isValidGlobPattern, LEAF_CRITERION_TYPES, GROUP_CRITERION_TYPES, isGroupType, getChildren, wrapCriterion, convertGroup } from './criterion'
+import { LeafCriterionType, TextMatchMode, TagMatchMode, FrontmatterMatchMode, Criterion, PatternCriterion, FrontmatterCriterion, ContentCriterion, TitleCriterion, PathCriterion, AndCriterion, OrCriterion, NotCriterion, TagCriterion, LEAF_CRITERION_TYPES, GROUP_CRITERION_TYPES, isGroupType, getChildren, wrapCriterion, convertGroup } from '../criteria/criteria'
+import { isValidGlobPattern } from '../criteria/glob'
 
 // Validators return an error message, or null if the value is valid
 
@@ -18,7 +19,7 @@ function validateRegex(pattern: string): string | null {
 // Supports: * ** ? [chars] ! (negate) # (comment) leading / (anchor)
 function validateGlobPatterns(value: string): string | null {
     const invalidLineNumbers = value.split('\n')
-        .map((line, i) => isValidGlobPattern(line, true, true) ? -1 : i + 1)
+        .map((line, i) => isValidGlobPattern(line, { allowNegated: true, allowEmptyOrComment: true }) ? -1 : i + 1)
         .filter(n => n !== -1)
 
     if (invalidLineNumbers.length === 0) return null
@@ -155,7 +156,7 @@ export class CriterionEditorModal extends Modal {
                 rerender()
             })
 
-        // Render type-specific fields
+        // Type-specific fields
         if (criterion instanceof FrontmatterCriterion) {
             addTextField(new TextComponent(row), criterion.key, 'Property', (v) => criterion.key = v)
             addModeDropdown(Object.values(FrontmatterMatchMode), criterion.matchMode, (v) => criterion.matchMode = v)
@@ -212,7 +213,7 @@ export class CriterionEditorModal extends Modal {
             createMenu().showAtMouseEvent(evt)
         })
 
-        // Render sub-criteria, indented below the row
+        // Sub-criteria, indented below the row
         if (criterion instanceof AndCriterion || criterion instanceof OrCriterion) {
             const childrenEl = container.createDiv({ cls: 'sp-criterion-children' })
             criterion.criteria.forEach((sub, i) => {

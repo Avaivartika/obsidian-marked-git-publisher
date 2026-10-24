@@ -28,7 +28,6 @@ export interface RepoValidationResult {
 export class GitHelper {
     static async validateRepo(repoPath: string): Promise<RepoValidationResult> {
         try {
-            // Check if it's a git repository by running git rev-parse
             await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: repoPath })
             return { isValid: true }
         } catch (error) {
@@ -84,7 +83,6 @@ export class GitHelper {
         try {
             await execFileAsync('git', ['pull', 'origin', branch], { cwd: repoPath })
         } catch (error) {
-            // Check if it's a merge conflict
             const execError = toExecFileError(error)
             if (execError.stderr?.includes('CONFLICT') || execError.message.includes('CONFLICT')) {
                 throw new Error('Merge conflict detected. Please resolve conflicts manually in your repository.')

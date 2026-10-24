@@ -2,7 +2,7 @@ import { App, FileSystemAdapter, TFile } from 'obsidian'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Buffer } from "buffer"
-import { GitHelper } from './git-service'
+import { GitHelper } from './git-helper'
 import { FileDiff } from './diff-parser'
 
 export enum FileUpdateStatus {
@@ -21,7 +21,7 @@ export class PublishingService {
     constructor(private app: App, private repoPath: string) { }
 
     public async getPublishingStatuses(publishableFiles: TFile[]): Promise<FileWithStatus[]> {
-        // Get statuses for publishable files
+        // Statuses of the publishable files
         const fileStatuses: FileWithStatus[] = await Promise.all(
             publishableFiles.map(async (file) => ({
                 path: file.path,
@@ -29,7 +29,7 @@ export class PublishingService {
             }))
         )
 
-        // Find files that would be deleted (exist in repo but not publishable)
+        // Published files that are no longer publishable
         const publishablePaths = new Set(publishableFiles.map(f => f.path))
         const publishedPaths = await this.getPublishedFiles()
         const deletedStatuses: FileWithStatus[] = publishedPaths
@@ -77,11 +77,10 @@ export class PublishingService {
                 const entries = await fs.readdir(dir, { withFileTypes: true })
                 for (const entry of entries) {
                     const fullPath = path.join(dir, entry.name)
-                    // Skip .git and .obsidian directories
+                    // Dot-files and dot-directories, such as .git and .obsidian, are not published files
                     if (entry.isDirectory() && !entry.name.startsWith('.')) {
                         await scanDirectory(fullPath)
                     } else if (entry.isFile() && !entry.name.startsWith('.')) {
-                        // Get relative path from repo root
                         const relativePath = path.relative(repoPath, fullPath).replace(/\\/g, '/')
                         publishedFiles.push(relativePath)
                     }
@@ -97,17 +96,14 @@ export class PublishingService {
     }
 
     private static processContent(content: string, file: TFile): string {
-        // Here could be a transformation for publishing if needed
         return content
     }
 
     private async cleanupRepo(publishableFiles: TFile[]) {
         try {
-            // Get set of paths that should be published
             const publishablePaths = new Set(publishableFiles.map(f => f.path))
             const publishedPaths = await this.getPublishedFiles()
 
-            // Remove files that shouldn't be there
             for (const publishedPath of publishedPaths) {
                 if (!publishablePaths.has(publishedPath)) {
                     await this.deleteFileFromRepo(publishedPath)
@@ -128,13 +124,12 @@ export class PublishingService {
         const destPath = this.resolveRepoPath(file.path)
         await fs.mkdir(path.dirname(destPath), { recursive: true })
 
+        // Notes pass through processContent, other files are copied as binary
         if (file.extension === 'md') {
             const content = await this.app.vault.read(file)
-            // Process content (modify links, etc. if needed)
             const processedContent = PublishingService.processContent(content, file)
             await fs.writeFile(destPath, processedContent)
         } else {
-            // Support binary files
             const buffer = await this.app.vault.readBinary(file)
             await fs.writeFile(destPath, Buffer.from(buffer))
         }
@@ -143,7 +138,6 @@ export class PublishingService {
     private async deleteFileFromRepo(relativePath: string) {
         try {
             const destPath = this.resolveRepoPath(relativePath)
-            // Check if file exists before attempting to delete
             try {
                 await fs.access(destPath)
                 await fs.unlink(destPath)

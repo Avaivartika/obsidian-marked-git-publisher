@@ -1,7 +1,6 @@
 import { TFile, CachedMetadata } from 'obsidian'
-import picomatch from 'picomatch'
+import { matchesGlobPatterns } from './glob'
 
-// Serialization
 
 // Type derived from class names (e.g., 'Tag' from TagCriterion)
 // Leaf criteria test a note directly, group criteria hold sub-criteria
@@ -49,12 +48,11 @@ interface CriterionClass {
 
 // Decorator for registering criterion classes
 // Assumes that the class name ends with 'Criterion'
-function RegisterCriterion<T extends CriterionClass>(constructor: T) {
+function registerCriterion<T extends CriterionClass>(constructor: T) {
     const type = constructor.name.replace('Criterion', '') as CriterionType
     registry.set(type, constructor as unknown as typeof Criterion)
 }
 
-// Utilities
 
 function stringifyValue(value: unknown): string {
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -70,66 +68,6 @@ function safeRegexTest(pattern: string, input: string, flags = 'i'): boolean {
         console.error(`Invalid regex pattern: ${pattern}`)
         return false
     }
-}
-
-const GLOB_OPTIONS = { dot: true, contains: true }
-
-/**
- * Information extracted from a single line of a glob pattern.
- */
-interface GlobLineInfo {
-    negated: boolean
-    glob: string
-}
-
-/**
- * Parses a single line of a .gitignore-style glob pattern.
- * Handles trimming, comments (#), and negation (!).
- */
-function parseGlobLine(line: string): GlobLineInfo {
-    const trimmed = line.trim()
-    if (trimmed === '' || trimmed.startsWith('#')) {
-        return { negated: false, glob: '' }
-    }
-    const negated = trimmed.startsWith('!')
-    const glob = negated ? trimmed.slice(1) : trimmed
-    return { negated, glob }
-}
-
-/**
- * Returns true if the given line is a valid .gitignore-style glob pattern.
- */
-export function isValidGlobPattern(line: string, allowNegated: boolean = false, allowEmptyOrComment: boolean = false): boolean {
-    const { negated, glob } = parseGlobLine(line)
-    if (glob.length === 0) return allowEmptyOrComment
-    try {
-        picomatch(glob, GLOB_OPTIONS)
-        return allowNegated || !negated
-    } catch {
-        return false
-    }
-}
-
-/**
- * Test a value against line-separated .gitignore-style glob patterns.
- * Supports # comments, ! negation, and last-match-wins semantics.
- */
-export function matchesGlobPatterns(multiLinePattern: string, input: string): boolean {
-    let matched = false
-    for (const rawLine of multiLinePattern.split('\n')) {
-        const { negated, glob } = parseGlobLine(rawLine)
-        if (glob.length === 0) continue
-
-        try {
-            const isMatch = picomatch(glob, GLOB_OPTIONS)
-            if (isMatch(input)) {
-                matched = !negated
-            }
-        } catch {
-            console.error(`Invalid glob pattern: ${glob}`)
-        }
-    }
-    return matched
 }
 
 export abstract class Criterion {
@@ -150,7 +88,7 @@ export abstract class Criterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class FrontmatterCriterion extends Criterion {
     constructor(
         public key: string,
@@ -202,7 +140,7 @@ export class FrontmatterCriterion extends Criterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class ContentCriterion extends Criterion {
     constructor(public regex: string) {
         super()
@@ -232,7 +170,6 @@ export abstract class PatternCriterion extends Criterion {
         super()
     }
 
-    // Abstract: must provide the value to match against
     protected abstract getTargetValue(file: TFile): string
 
     evaluate(file: TFile, _content: string, _metadata: CachedMetadata): boolean {
@@ -257,7 +194,7 @@ export abstract class PatternCriterion extends Criterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class TitleCriterion extends PatternCriterion {
     constructor(public pattern: string = '', public matchMode: TextMatchMode) {
         super(pattern, matchMode)
@@ -272,14 +209,14 @@ export class TitleCriterion extends PatternCriterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class PathCriterion extends PatternCriterion {
     constructor(public pattern: string, public matchMode: TextMatchMode) {
         super(pattern, matchMode)
     }
 
     protected getTargetValue(file: TFile): string {
-        // Normalize path separators for consistency
+        // Use forward slashes, so that glob patterns also match Windows paths
         return file.path.replace(/\\/g, '/')
     }
 
@@ -292,7 +229,7 @@ function indentText(text: string, spaces: number): string {
     return text.replace(/^/gm, ' '.repeat(spaces))
 }
 
-@RegisterCriterion
+@registerCriterion
 export class AndCriterion extends Criterion {
     constructor(public criteria: Criterion[]) {
         super()
@@ -321,7 +258,7 @@ export class AndCriterion extends Criterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class OrCriterion extends Criterion {
     constructor(public criteria: Criterion[]) {
         super()
@@ -350,7 +287,7 @@ export class OrCriterion extends Criterion {
     }
 }
 
-@RegisterCriterion
+@registerCriterion
 export class NotCriterion extends Criterion {
     constructor(public criterion: Criterion) {
         super()
@@ -403,15 +340,15 @@ export function convertGroup(group: Criterion, type: GroupCriterionType): Criter
 function extractTagsFromContent(content: string): string[] {
     const lines = content.split('\n')
     const tags: Set<string> = new Set()
-    let inCodeBlock = false
+    let lineIsInCodeBlock = false
 
     for (const line of lines) {
         if (line.trim().startsWith('```')) {
-            inCodeBlock = !inCodeBlock
+            lineIsInCodeBlock = !lineIsInCodeBlock
             continue
         }
 
-        if (!inCodeBlock) {
+        if (!lineIsInCodeBlock) {
             if (line.trim().startsWith('%%')) {
                 continue
             }
@@ -432,7 +369,7 @@ export function getAllTagsFromFile(file: TFile, content: string, metadata: Cache
     return [...new Set([...tagsFromFrontmatter, ...tagsFromContent])]
 }
 
-@RegisterCriterion
+@registerCriterion
 export class TagCriterion extends Criterion {
     constructor(public tag: string, public matchMode: TagMatchMode = TagMatchMode.StartsWith) {
         super()

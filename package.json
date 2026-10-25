@@ -1,6 +1,6 @@
 {
   "name": "obsidian-selective-publisher",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "An Obsidian plugin that selectively publishes notes to a public repository",
   "main": "main.js",
   "scripts": {

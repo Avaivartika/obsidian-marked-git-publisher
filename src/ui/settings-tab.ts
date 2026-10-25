@@ -21,10 +21,10 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
         let repoContentPathText: TextComponent
         new Setting(containerEl)
             .setName('Publishing directory')
-            .setDesc('Path to the content directory in a local Git repository for publishing.')
+            .setDesc('The content directory in a local Git repository. Files in it that are not published are deleted.')
             .addText((text) => {
                 repoContentPathText = text
-                text.setPlaceholder('Enter repository path')
+                text.setPlaceholder('Enter directory path')
                     .setValue(this.plugin.settings.repo)
                     .onChange(async (value) => {
                         this.plugin.settings.repo = value
@@ -59,7 +59,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
         let repoBranchDropdown: DropdownComponent
         new Setting(containerEl)
             .setName('Branch')
-            .setDesc('Branch to push the published notes to.')
+            .setDesc('Git branch to push the published notes to.')
             .addDropdown((dropdown) => {
                 repoBranchDropdown = dropdown
                 void this.refreshRepoBranchDropdown(dropdown)
@@ -71,7 +71,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Commit message')
-            .setDesc('Default commit message for publishing changes.')
+            .setDesc('Used for every commit.')
             .addText((text) =>
                 text.setPlaceholder('Enter commit message')
                     .setValue(this.plugin.settings.commitMessage)
@@ -85,7 +85,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Show preview before publishing')
-            .setDesc('Show the publishing preview modal before publishing.')
+            .setDesc('Review changes, with an option to commit without pushing.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.showPreviewBeforePublishing)
                     .onChange(async (value) => {
@@ -94,9 +94,9 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
                     })
             )
 
-        new Setting(containerEl)
+        const criterionSetting = new Setting(containerEl)
             .setName('Publishing criterion')
-            .setDesc('The criterion for selecting Markdown notes to publish.')
+            .setDesc('Applies to Markdown files only.')
             .addButton((btn) => btn
                 .setButtonText('Edit criterion')
                 .setCta()
@@ -111,15 +111,16 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
                 .setButtonText('Preview publishable files')
                 .onClick(() => { void this.plugin.previewPublishableFiles() })
             )
-        // Representation of the current criterion
-        containerEl.createEl('pre', {
+        // Representation of the current criterion, spanning the full width below the name and buttons
+        criterionSetting.settingEl.addClass('sp-criterion-setting')
+        criterionSetting.settingEl.createEl('pre', {
             text: this.plugin.settings.criterion.getSummary(),
             cls: 'sp-criterion-summary',
         })
 
         new Setting(containerEl)
             .setName('Publish attachments')
-            .setDesc('Publish attachments referenced in publishable notes.')
+            .setDesc('Publish non-Markdown files linked or embedded in published notes.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.publishAttachments)
                     .onChange(async (value) => {
@@ -130,7 +131,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
 
         const extraPatternsSetting = new Setting(containerEl)
             .setName('Extra file patterns')
-            .setDesc('Glob patterns (one per line) for additional vault files to publish, regardless of the publishing criterion. Supports !, #, and ** syntax.')
+            .setDesc('Glob patterns, one per line, for vault files to publish regardless of the criterion. Supports !, #, and ** syntax.')
         addGlobField(extraPatternsSetting, () => this.plugin.settings.extraFilePatterns,
             (value) => {
                 void (async () => {

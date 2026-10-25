@@ -2,15 +2,40 @@
 
 .sp-criterion-summary,
 .sp-error-log {
-    font-size: var(--font-smallest);
+    font-family: var(--font-monospace);
+    font-size: var(--code-size);
+    color: var(--code-normal);
     width: 100%;
     box-sizing: border-box;
-    background-color: var(--background-secondary);
-    padding: 1em;
-    margin: 1em 0;
+    background-color: var(--code-background);
+    border-radius: var(--code-radius);
+    padding: var(--size-4-3) var(--size-4-4);
+    margin: var(--size-4-3) 0;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
     user-select: text;
+}
+
+/* Settings tab */
+
+.sp-criterion-setting {
+    flex-wrap: wrap;
+}
+
+/* Keeps the name and buttons on one line, so that only the summary wraps */
+.sp-criterion-setting .setting-item-info {
+    flex-basis: 0;
+}
+
+.sp-criterion-setting .setting-item-control {
+    flex-grow: 0;
+}
+
+/* The code background can match the setting item's, so it's set apart like the diff */
+.sp-criterion-setting .sp-criterion-summary {
+    margin-bottom: 0;
+    background-color: var(--background-primary);
+    border: var(--border-width) solid var(--background-modifier-border);
 }
 
 /* Criterion editor */
@@ -65,7 +90,7 @@
 .sp-criterion-children {
     margin-left: var(--size-4-3);
     padding-left: var(--size-4-3);
-    border-left: 1px solid var(--background-modifier-border);
+    border-left: var(--border-width) solid var(--background-modifier-border);
 }
 
 button.sp-criterion-add {
@@ -157,7 +182,7 @@ button.sp-criterion-add:hover {
 }
 
 .sp-publish-preview-list li.is-modified {
-    --sp-status-color: #e2c08d;
+    --sp-status-color: var(--color-yellow);
 }
 
 .sp-publish-preview-list li.is-deleted {
@@ -187,7 +212,7 @@ button.sp-criterion-add:hover {
     font-size: var(--font-smallest);
     line-height: 1.5;
     background-color: var(--background-primary);
-    border: 1px solid var(--background-modifier-border);
+    border: var(--border-width) solid var(--background-modifier-border);
     border-radius: var(--radius-s);
     user-select: text;
 }

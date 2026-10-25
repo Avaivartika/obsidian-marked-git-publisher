@@ -13,7 +13,7 @@ export class PublishPreviewModal extends Modal {
 
     onOpen() {
         const { contentEl, modalEl } = this
-        this.setTitle('Publishing preview')
+        this.setTitle('GitHub 公开同步预览')
         modalEl.addClass('sp-modal-fixed-footer')
         contentEl.empty()
 
@@ -22,21 +22,21 @@ export class PublishPreviewModal extends Modal {
         const unmodified = sortedFiles.filter(f => f.status === FileUpdateStatus.Unmodified)
 
         if (sortedFiles.length === 0 && !this.hasUncommittedChanges) {
-            contentEl.createEl('p', { text: 'No files match the current publishing criteria and no files to unpublish.' })
+            contentEl.createEl('p', { text: '当前没有已标记的文件，也没有待撤回的公开文件。' })
         } else {
             if (changed.length === 0 && !this.hasUncommittedChanges) {
-                contentEl.createEl('p', { text: 'Published files are up to date. No changes to publish.' })
+                contentEl.createEl('p', { text: '公开文件已是最新状态。' })
             } else {
-                this.renderFileList(contentEl, 'Changed files', changed)
+                this.renderFileList(contentEl, '待变更文件', changed)
             }
-            this.renderFileList(contentEl, 'Unmodified published files', unmodified, true)
+            this.renderFileList(contentEl, '未变更文件', unmodified, true)
         }
 
         const btnContainer = modalEl.createDiv('modal-button-container')
 
         if (changed.length > 0 || this.hasUncommittedChanges) {
             new ButtonComponent(btnContainer)
-                .setButtonText('Publish')
+                .setButtonText('推送到 GitHub')
                 .setCta()
                 .onClick(async () => {
                     this.close()
@@ -44,7 +44,7 @@ export class PublishPreviewModal extends Modal {
                 })
 
             new ButtonComponent(btnContainer)
-                .setButtonText('Commit')
+                .setButtonText('仅本地提交')
                 .onClick(async () => {
                     this.close()
                     await this.onAction('commit')
@@ -52,7 +52,7 @@ export class PublishPreviewModal extends Modal {
         }
 
         new ButtonComponent(btnContainer)
-            .setButtonText('Cancel')
+            .setButtonText('取消')
             .onClick(() => {
                 this.close()
             })
@@ -69,20 +69,21 @@ export class PublishPreviewModal extends Modal {
             const pathEl = li.createSpan({ text: path, cls: 'sp-publish-path' })
             if (status === FileUpdateStatus.Modified) {
                 pathEl.addClass('is-clickable')
-                pathEl.setAttr('aria-label', 'Show changes')
+                pathEl.setAttr('aria-label', '查看变更')
                 pathEl.onClickEvent(() => this.toggleDiff(li, path))
             }
             if (status !== FileUpdateStatus.Deleted) {
                 new ExtraButtonComponent(li)
                     .setIcon('file-symlink')
-                    .setTooltip('Open file')
+                    .setTooltip('打开文件')
                     .onClick(() => {
                         this.close()
                         void this.app.workspace.openLinkText(path, '', 'tab')
                     })
             }
             if (!hideBadge) {
-                li.createSpan({ text: status, cls: 'sp-publish-badge' })
+                const translated = { new: '新增', modified: '修改', deleted: '删除', unmodified: '未变更' }
+                li.createSpan({ text: translated[status], cls: 'sp-publish-badge' })
             }
         }
     }
@@ -96,13 +97,13 @@ export class PublishPreviewModal extends Modal {
         }
 
         const diffEl = li.createDiv('sp-publish-diff')
-        const messageEl = diffEl.createDiv({ cls: 'sp-diff-message', text: 'Loading changes…' })
+        const messageEl = diffEl.createDiv({ cls: 'sp-diff-message', text: '正在读取变更…' })
         try {
             const diff = await this.getDiff(path)
             messageEl.remove()
             renderDiff(diffEl, diff)
         } catch (error) {
-            messageEl.setText(`Failed to load changes: ${error instanceof Error ? error.message : String(error)}`)
+            messageEl.setText(`读取变更失败：${error instanceof Error ? error.message : String(error)}`)
         }
     }
 

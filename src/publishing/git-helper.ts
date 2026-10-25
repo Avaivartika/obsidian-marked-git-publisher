@@ -26,6 +26,10 @@ export interface RepoValidationResult {
 }
 
 export class GitHelper {
+    static async getRoot(repoPath: string): Promise<string> {
+        const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd: repoPath })
+        return stdout.trim()
+    }
     static async validateRepo(repoPath: string): Promise<RepoValidationResult> {
         try {
             await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: repoPath })
@@ -77,7 +81,7 @@ export class GitHelper {
     static async commit(repoPath: string, message: string): Promise<void> {
         try {
             try {
-                await execFileAsync('git', ['commit', '-m', message], { cwd: repoPath })
+                await execFileAsync('git', ['commit', '-m', message, '--', '.'], { cwd: repoPath })
             } catch (err) {
                 const execError = toExecFileError(err)
                 if (!execError.stdout?.includes('nothing to commit') && !execError.stderr?.includes('nothing to commit')) {
@@ -131,7 +135,7 @@ export class GitHelper {
     static async hasUncommittedChanges(repoPath: string): Promise<boolean> {
         try {
             // git status --porcelain returns empty string if no changes
-            const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: repoPath })
+            const { stdout } = await execFileAsync('git', ['status', '--porcelain', '--', '.'], { cwd: repoPath })
             return stdout.trim().length > 0
         } catch (error) {
             this.handleGitError(repoPath, error, 'check status')

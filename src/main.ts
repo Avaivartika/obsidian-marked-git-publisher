@@ -1,227 +1,223 @@
-import { Notice, Plugin, TFile } from 'obsidian'
+import { FileSystemAdapter, Menu, Notice, Plugin, TAbstractFile, TFile, TFolder } from 'obsidian'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 import { PublishPreviewModal, PublishAction } from './ui/publish-preview-modal'
 import { FailureModal } from './ui/failure-modal'
-import { matchesGlobPatterns } from './criteria/glob'
-import { Criterion } from './criteria/criteria'
 import { SelectivePublisherSettings, DEFAULT_SETTINGS } from './settings'
 import { SelectivePublisherSettingTab } from './ui/settings-tab'
 import { GitHelper } from './publishing/git-helper'
 import { PublishingService } from './publishing/publishing-service'
 
-async function filterAsync<T>(arr: T[], cond: (el: T) => Promise<boolean>): Promise<T[]> {
-    const results = await Promise.all(arr.map(cond))
-    return arr.filter((_, index) => results[index])
-}
-
 export default class SelectivePublisherPlugin extends Plugin {
     settings!: SelectivePublisherSettings
     publishingService!: PublishingService
+    private autoTimer: ReturnType<typeof setTimeout> | null = null
+    private publishing = false
+    private publishAgain = false
 
     async onload() {
         await this.loadSettings()
         this.publishingService = new PublishingService(this.app, this.settings.repo)
-
+        this.addCommand({ id: 'publish-notes', name: '发布已标记的笔记到 GitHub', callback: () => { void this.publishNotes() } })
+        this.addCommand({ id: 'preview-publishable', name: '预览公开同步范围', callback: () => { void this.previewPublishableFiles() } })
         this.addCommand({
-            id: 'publish-notes',
-            name: 'Publish notes',
-            callback: () => this.publishNotes(),
+            id: 'toggle-current-note', name: '标记或取消公开同步当前笔记',
+            checkCallback: checking => {
+                const file = this.app.workspace.getActiveFile()
+                if (!file) return false
+                if (!checking) void this.toggleFile(file)
+                return true
+            },
         })
-
-        this.addCommand({
-            id: 'preview-publishable',
-            name: 'Preview publishable files',
-            callback: () => this.previewPublishableFiles(),
-        })
-
-        this.addRibbonIcon('paper-plane', 'Publish notes', () => { void this.publishNotes() })
-
+        this.addRibbonIcon('paper-plane', '预览并发布已标记笔记', () => { void this.previewPublishableFiles() })
+        this.registerEvent(this.app.workspace.on('file-menu', (menu: Menu, file: TAbstractFile) => {
+            if (file instanceof TFolder && file.path !== '/') {
+                const selected = this.settings.selectedFolders.includes(file.path)
+                menu.addItem(item => item.setTitle(selected ? '移出 GitHub 公开同步' : '标记文件夹用于 GitHub 公开同步')
+                    .setIcon(selected ? 'circle-minus' : 'cloud-upload')
+                    .onClick(() => { void this.toggleFolder(file) }))
+            } else if (file instanceof TFile && file.extension === 'md') {
+                const selected = this.isNoteSelected(file.path)
+                menu.addItem(item => item.setTitle(selected ? '移出 GitHub 公开同步' : '标记笔记用于 GitHub 公开同步')
+                    .setIcon(selected ? 'circle-minus' : 'cloud-upload')
+                    .onClick(() => { void this.toggleFile(file) }))
+            }
+        }))
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.renameSelection(file, oldPath) }))
+        this.registerEvent(this.app.vault.on('delete', file => { void this.deleteSelection(file) }))
+        this.registerEvent(this.app.vault.on('modify', file => {
+            if (file instanceof TFile && (this.isNoteSelected(file.path) || file.extension !== 'md')) this.scheduleAutoPublish()
+        }))
+        this.registerEvent(this.app.vault.on('create', file => {
+            if (file instanceof TFile && this.isNoteSelected(file.path)) this.scheduleAutoPublish()
+        }))
+        this.register(() => { if (this.autoTimer) clearTimeout(this.autoTimer) })
         this.addSettingTab(new SelectivePublisherSettingTab(this.app, this))
     }
 
-    async getPublishableFiles(): Promise<TFile[]> {
-        const markdownFiles = this.app.vault.getMarkdownFiles()
-        const publishableNotes = await this.filterPublishableFiles(markdownFiles)
-
-        const publishableSet = new Set<TFile>()
-        for (const file of publishableNotes) {
-            publishableSet.add(file)
-        }
-
-        if (this.settings.publishAttachments) {
-            for (const file of publishableNotes) {
-                const referencedAttachments = this.getReferencedAttachments(file)
-                referencedAttachments.forEach(attachment => publishableSet.add(attachment))
-            }
-        }
-
-        if (this.settings.extraFilePatterns.trim()) {
-            const allFiles = this.app.vault.getFiles().filter(f => matchesGlobPatterns(this.settings.extraFilePatterns, f.path.replace(/\\/g, '/')))
-            for (const file of allFiles) {
-                publishableSet.add(file)
-            }
-        }
-
-        return Array.from(publishableSet)
+    isNoteSelected(path: string): boolean {
+        if (this.settings.excludedFiles.includes(path)) return false
+        return this.settings.selectedFiles.includes(path) || this.settings.selectedFolders.some(folder => path.startsWith(folder + '/'))
     }
 
-    private getReferencedAttachments(file: TFile): TFile[] {
-        const metadata = this.app.metadataCache.getFileCache(file)
-        if (!metadata) return []
+    async toggleFile(file: TFile): Promise<void> {
+        const path = file.path
+        const inherited = this.settings.selectedFolders.some(folder => path.startsWith(folder + '/'))
+        if (this.settings.excludedFiles.includes(path)) {
+            this.settings.excludedFiles = this.settings.excludedFiles.filter(item => item !== path)
+        } else if (this.settings.selectedFiles.includes(path)) {
+            this.settings.selectedFiles = this.settings.selectedFiles.filter(item => item !== path)
+            if (inherited) this.settings.excludedFiles.push(path)
+        } else if (inherited) {
+            this.settings.excludedFiles.push(path)
+        } else {
+            this.settings.selectedFiles.push(path)
+        }
+        await this.saveSettings()
+        this.scheduleAutoPublish()
+        new Notice(`${this.isNoteSelected(path) ? '已标记' : '已移出'}公开同步：${path}`)
+    }
 
-        const attachments: TFile[] = []
-        const links = [...(metadata.links ?? []), ...(metadata.embeds ?? [])]
+    async toggleFolder(folder: TFolder): Promise<void> {
+        const path = folder.path
+        if (this.settings.selectedFolders.includes(path)) {
+            this.settings.selectedFolders = this.settings.selectedFolders.filter(item => item !== path)
+        } else {
+            this.settings.selectedFolders.push(path)
+        }
+        await this.saveSettings()
+        this.scheduleAutoPublish()
+        new Notice(`${this.settings.selectedFolders.includes(path) ? '已标记' : '已移出'}公开同步：${path}`)
+    }
 
-        for (const link of links) {
-            const linkPath = link.link.split('#')[0]!
-            const linkedFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path)
-            if (linkedFile instanceof TFile && linkedFile.extension !== 'md') {
-                attachments.push(linkedFile)
+    private async renameSelection(file: TAbstractFile, oldPath: string): Promise<void> {
+        const rename = (paths: string[]) => paths.map(path => path === oldPath || (file instanceof TFolder && path.startsWith(oldPath + '/'))
+            ? file.path + path.slice(oldPath.length) : path)
+        this.settings.selectedFiles = rename(this.settings.selectedFiles)
+        this.settings.selectedFolders = rename(this.settings.selectedFolders)
+        this.settings.excludedFiles = rename(this.settings.excludedFiles)
+        await this.saveSettings()
+        this.scheduleAutoPublish()
+    }
+
+    private async deleteSelection(file: TAbstractFile): Promise<void> {
+        const keep = (path: string) => path !== file.path && !(file instanceof TFolder && path.startsWith(file.path + '/'))
+        this.settings.selectedFiles = this.settings.selectedFiles.filter(keep)
+        this.settings.selectedFolders = this.settings.selectedFolders.filter(keep)
+        this.settings.excludedFiles = this.settings.excludedFiles.filter(keep)
+        await this.saveSettings()
+        this.scheduleAutoPublish()
+    }
+
+    getPublishableFiles(): TFile[] {
+        const notes = this.app.vault.getMarkdownFiles().filter(file => this.isNoteSelected(file.path))
+        const selected = new Set<TFile>(notes)
+        if (this.settings.publishAttachments) {
+            for (const note of notes) {
+                const metadata = this.app.metadataCache.getFileCache(note)
+                for (const link of [...(metadata?.links ?? []), ...(metadata?.embeds ?? [])]) {
+                    const target = this.app.metadataCache.getFirstLinkpathDest(link.link.split('#')[0]!, note.path)
+                    if (target instanceof TFile && target.extension !== 'md') selected.add(target)
+                }
             }
         }
-
-        return attachments
+        return [...selected].sort((a, b) => a.path.localeCompare(b.path))
     }
 
     async previewPublishableFiles() {
         try {
             if (!await this.switchToPublishingBranch()) return
-
-            const publishableFiles = await this.getPublishableFiles()
-            const fileStatuses = await this.publishingService.getPublishingStatuses(publishableFiles)
-            const repoHasUncommittedChanges = await GitHelper.hasUncommittedChanges(this.settings.repo)
-
-            if (fileStatuses.length === 0 && !repoHasUncommittedChanges) {
-                new Notice('No files to publish or unpublish.')
+            const files = this.getPublishableFiles()
+            const statuses = await this.publishingService.getPublishingStatuses(files)
+            const dirty = await GitHelper.hasUncommittedChanges(this.settings.repo)
+            if (statuses.length === 0 && !dirty) {
+                new Notice('没有待发布或待撤回的文件。')
                 return
             }
-
-            const modal = new PublishPreviewModal(this.app, fileStatuses, repoHasUncommittedChanges,
-                (action: PublishAction) => this.publishNotes({
-                    commitOnly: action === 'commit',
-                    skipPreview: true,
-                    cachedPublishableFiles: publishableFiles,
-                }),
-                (path: string) => this.publishingService.getFileDiff(path))
-            modal.open()
+            new PublishPreviewModal(this.app, statuses, dirty,
+                (action: PublishAction) => this.publishNotes({ commitOnly: action === 'commit', skipPreview: true }),
+                (path: string) => this.publishingService.getFileDiff(path)).open()
         } catch (error) {
-            console.error('Preview failed:', error)
+            console.error('Publishing preview failed:', error)
             new FailureModal(this.app, error as Error, this.settings.repo).open()
         }
     }
 
-    async publishNotes({ commitOnly = false, skipPreview = false, cachedPublishableFiles }: {
-        commitOnly?: boolean
-        skipPreview?: boolean
-        cachedPublishableFiles?: TFile[]
-    } = {}) {
+    async publishNotes({ commitOnly = false, skipPreview = false }: { commitOnly?: boolean, skipPreview?: boolean } = {}) {
+        if (this.publishing) {
+            this.publishAgain = true
+            return
+        }
+        this.publishing = true
         try {
             if (!skipPreview && this.settings.showPreviewBeforePublishing) {
                 await this.previewPublishableFiles()
                 return
             }
-
             if (!await this.switchToPublishingBranch()) return
-
-            const operationName = commitOnly ? 'commit' : 'publish'
-            new Notice(`Starting ${operationName} operation...`)
-
-            // Pulling first avoids conflicts with changes made to the publishing branch elsewhere
-            if (!commitOnly) {
-                await this.pullFromRemote()
-            }
-
-            const publishableFiles = cachedPublishableFiles ?? await this.getPublishableFiles()
-            await this.publishingService.updateFilesInRepo(publishableFiles)
-
-            await this.commitAndPush(commitOnly)
-            const noteCount = publishableFiles.filter(f => f.extension === 'md').length
-            new Notice(`Successfully ${operationName}ed ${noteCount} notes.`)
+            new Notice(commitOnly ? '正在提交公开笔记…' : '正在同步公开笔记到 GitHub…')
+            if (!commitOnly) await GitHelper.pull(this.settings.repo, this.settings.repoBranch)
+            const files = this.getPublishableFiles()
+            await this.publishingService.updateFilesInRepo(files)
+            await GitHelper.add(this.settings.repo)
+            await GitHelper.commit(this.settings.repo, this.settings.commitMessage)
+            if (!commitOnly) await GitHelper.push(this.settings.repo, this.settings.repoBranch)
+            new Notice(`已${commitOnly ? '提交' : '同步'} ${files.filter(file => file.extension === 'md').length} 篇笔记。`)
         } catch (error) {
             console.error('Publishing failed:', error)
             new FailureModal(this.app, error as Error, this.settings.repo).open()
+        } finally {
+            this.publishing = false
+            if (this.publishAgain) {
+                this.publishAgain = false
+                this.scheduleAutoPublish()
+            }
         }
     }
 
+    scheduleAutoPublish() {
+        if (!this.settings.autoPublish) return
+        if (this.autoTimer) clearTimeout(this.autoTimer)
+        this.autoTimer = setTimeout(() => {
+            this.autoTimer = null
+            if (this.settings.autoPublish) void this.publishNotes({ skipPreview: true })
+        }, 30000)
+    }
+
     private async switchToPublishingBranch(): Promise<boolean> {
-        const branch = this.settings.repoBranch
-        if (!branch) {
-            new Notice('No publishing branch selected. Please check the settings.')
+        if (!this.settings.repoBranch || this.settings.repo === DEFAULT_SETTINGS.repo) {
+            new Notice('请先在插件设置中指定 Git 仓库目录和分支。')
             return false
         }
-        if (await GitHelper.getCurrentBranch(this.settings.repo) !== branch) {
-            await GitHelper.switchBranch(this.settings.repo, branch)
-            new Notice(`Switched to branch "${branch}".`)
+        const validation = await GitHelper.validateRepo(this.settings.repo)
+        if (!validation.isValid) throw new Error(validation.error ?? 'Git 仓库不可用')
+        const publishingDirectory = await fs.realpath(this.settings.repo)
+        const repositoryRoot = await fs.realpath(await GitHelper.getRoot(this.settings.repo))
+        if (path.dirname(publishingDirectory) !== repositoryRoot || path.basename(publishingDirectory) !== 'notes') {
+            throw new Error('发布目录必须是独立 Git 仓库根目录下的 notes 文件夹。')
+        }
+        if (this.app.vault.adapter instanceof FileSystemAdapter) {
+            const vaultDirectory = await fs.realpath(this.app.vault.adapter.getBasePath())
+            if (repositoryRoot === vaultDirectory || repositoryRoot.startsWith(vaultDirectory + path.sep)) {
+                throw new Error('公开 Git 仓库不能放在 Obsidian 仓库内部。')
+            }
+        }
+        if (await GitHelper.getCurrentBranch(this.settings.repo) !== this.settings.repoBranch) {
+            await GitHelper.switchBranch(this.settings.repo, this.settings.repoBranch)
         }
         return true
     }
 
-    private async pullFromRemote() {
-        try {
-            await GitHelper.pull(this.settings.repo, this.settings.repoBranch)
-        } catch (error) {
-            throw new Error(`Cannot sync with remote: ${(error as Error).message}`)
-        }
-    }
-
-    private async commitAndPush(commitOnly: boolean) {
-        try {
-            await GitHelper.add(this.settings.repo)
-            await GitHelper.commit(this.settings.repo, this.settings.commitMessage)
-            if (!commitOnly) {
-                await GitHelper.push(this.settings.repo, this.settings.repoBranch)
-            }
-        } catch (error) {
-            console.error('Git operation failed:', error)
-            throw new Error(`Git operation failed: ${(error as Error).message}`)
-        }
-    }
-
-    async filterPublishableFiles(files: TFile[]): Promise<TFile[]> {
-        return filterAsync(files, file => this.isFilePublishable(file))
-    }
-
-    async isFilePublishable(file: TFile): Promise<boolean> {
-        try {
-            const metadata = this.app.metadataCache.getFileCache(file)
-            if (!metadata) {
-                return false
-            }
-            const content = await this.app.vault.read(file)
-            return this.settings.criterion.evaluate(file, content, metadata)
-        } catch (error) {
-            console.error(`Error evaluating publishability for ${file.path}:`, error)
-            return false
-        }
-    }
-
     async loadSettings() {
-        type SavedData = Partial<Omit<SelectivePublisherSettings, 'criterion'> & { criterion: import('./criteria/criteria').SerializedCriterion }>
-        const data = (await this.loadData()) as SavedData | null
-        this.settings = Object.assign({}, DEFAULT_SETTINGS)
-
-        if (data) {
-            if (data.criterion) this.settings.criterion = Criterion.deserialize(data.criterion)
-            if (data.repo) this.settings.repo = data.repo
-            if (data.repoBranch) this.settings.repoBranch = data.repoBranch
-            if (data.commitMessage) this.settings.commitMessage = data.commitMessage
-            if (data.showPreviewBeforePublishing !== undefined) {
-                this.settings.showPreviewBeforePublishing = data.showPreviewBeforePublishing
-            }
-            if (data.publishAttachments !== undefined) {
-                this.settings.publishAttachments = data.publishAttachments
-            }
-            if (data.extraFilePatterns !== undefined) {
-                this.settings.extraFilePatterns = data.extraFilePatterns
-            }
+        const data = (await this.loadData()) as Partial<SelectivePublisherSettings> | null
+        this.settings = { ...DEFAULT_SETTINGS, ...data }
+        for (const key of ['selectedFiles', 'selectedFolders', 'excludedFiles'] as const) {
+            if (!Array.isArray(this.settings[key])) this.settings[key] = []
         }
     }
 
     async saveSettings() {
-        const data = {
-            ...this.settings,
-            criterion: this.settings.criterion.serialize(),
-        }
-        await this.saveData(data)
+        await this.saveData(this.settings)
         this.publishingService = new PublishingService(this.app, this.settings.repo)
     }
 }

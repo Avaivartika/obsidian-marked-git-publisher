@@ -1,96 +1,36 @@
-# Selective Publisher for Obsidian
+# Marked Git Publisher for Obsidian
 
-A plugin for Obsidian that selectively publishes notes to a Git repository based on customizable criteria.
+A desktop Obsidian plugin for publishing **only the notes and folders you mark** to a public GitHub repository. The publishing repository stays outside the vault. Nothing is selected when the plugin is first installed.
 
-## Features
-![Screenshot of Plugin](docs/images/screens.webp)
+This project is based on [Selective Publisher](https://github.com/Ivan1248/obsidian-selective-publisher) by Ivan Grubišić, under the MIT license. It adds file and folder context menu marking, per-note exclusions inside selected folders, automatic selection updates after rename/delete, optional delayed automatic publishing, and GitHub-friendly links for published notes and images.
 
-- Filtering of notes and attachments based on tags, frontmatter, path, or content, and path-based filtering of other files.
-- Committing and pushing to a target Git repository.
-- Review of changed files (added, modified, deleted) before publishing.
+## How it works
 
-## Requirements
+1. Right-click a note or folder in Obsidian and choose **标记…用于 GitHub 公开同步**. Right-click again to remove it. A note inside a marked folder can be excluded individually.
+2. Click the paper-plane icon or run **预览公开同步范围**. Review the added, changed, and removed files.
+3. Choose **推送到 GitHub**. The plugin copies selected notes and referenced attachments to the `notes/` directory of a local Git repository, commits those changes, and pushes the selected branch over your existing Git transport (SSH or HTTPS).
 
-- Obsidian v0.15.0+
-- Git installed and configured locally.
-- A local clone of target remote repository. 
-- For publishing as a website, the repository can contain a static site generator such as [Quartz](https://github.com/jackyzha0/quartz), which is able to process Obsidian Markdown files.
+The plugin converts Obsidian wiki links to published notes and embedded assets into relative Markdown links. Links to unpublished notes are rendered as plain text. Publishing is **one-way** from Obsidian to GitHub; edits made on GitHub are not imported into the vault. Unmarking a file removes its published copy on the next publish.
 
-## Installation
-
-1. Search for "Selective Publisher" in Obsidian's Community Plugins.
-2. Click "Install" and then "Enable".
+Optional **自动同步** publishes marked changes about 30 seconds after editing. It is off by default. Automatic publishing skips the preview, so enable it only after checking your selection.
 
 ## Setup
 
-1. Clone your target repository (e.g., GitHub Pages) to a local folder.
-2. In the plugin settings:
-   - Set "Publishing directory" to the absolute local path of the repository or a directory within it. (If Quartz is used, this is the `content` directory.)
-   - Optionally, change the "Publishing branch" (e.g., `main`).
-   - Configure "Publishing criterion" (see below).
-   - Optionally, uncheck "Show preview before publishing" to skip the preview modal when publishing.
+- Install Git and configure a GitHub remote that can push. A local Git clone must exist outside your Obsidian vault.
+- Create a `notes/` directory directly under the repository root.
+- Install `main.js`, `manifest.json`, and `styles.css` from the matching [release](https://github.com/Avaivartika/obsidian-marked-git-publisher/releases) into `<vault>/.obsidian/plugins/marked-git-publisher/`, then enable it in Community plugins.
+- In the plugin settings, choose the absolute `notes/` path and the target branch. The plugin accepts only a root-level `notes/` directory and refuses a repository inside the Obsidian vault.
 
-## Usage
+The repository may contain the plugin source, README, and other files outside `notes/`. The publisher stages and commits only `notes/`. It manages and may delete files **inside `notes/`**, so keep unrelated files elsewhere. Before every manual push, the preview lists all file additions, changes, and deletions.
 
-### Publishing criterion
-
-The plugin evaluates each markdown file against a tree combining criteria:
-- **Tag**: Matches exact Obsidian tag or hierarchical subtags (e.g., `public` matches `#public/blog`).
-- **Frontmatter**: Matches a specific key and value in YAML frontmatter, with support for regex in the value field.
-- **Folder**: Includes or excludes specific directories.
-- **Title**: Matches the file basename (without extension). Supports substring or regex.
-- **Path**: Matches the relative path from vault root. Supports substring or regex.
-- **Content**: Matches body text based on a regex search.
-
-Criteria can be combined with logical operators: **AND**, **OR**, and **NOT**.
-
-### Publishing
-
-There are two ways to publish notes:
-- Click the ribbon button with a paper plane icon. By default, this opens a preview modal before publishing.
-- Run the command `Publish notes`. This publishes the changes.
-
-The preview modal displays the matching files and their status (new, modified, deleted, unmodified) relative to the target repository.
-
-You can choose to publish (commit and push) or just commit (local only).
-
-### Commands
-
-- **Publish notes**: Publish all matching notes. Shows preview first if enabled in settings.
-- **Preview publishable files**: Preview files that match the criteria with their status (new, modified, deleted, unmodified).
-- **Ribbon button** (paper plane icon): Quick shortcut to publish notes.
+No GitHub token is stored by this plugin. It invokes local `git` with the machine's existing authentication. No telemetry or other network service is used.
 
 ## Development
 
-```bash
-npm install        # install dependencies
-npm run dev        # build in watch mode (for development)
-npm run build      # type-check and build for production
-npm run lint       # run ESLint
+```sh
+npm ci
+npm run build
+npm run lint
 ```
 
-To test locally, put `main.js` and `manifest.json` into `<your-vault>/.obsidian/plugins/wikilink-helper/` and reload the plugin.
-
-## Other information
-
-- [Disclosures](https://docs.obsidian.md/Developer+policies#Disclosures) per Obsidian developer policies:
-    - Network use. The network is used for synchronizing with the remote Git repository when publishing. No data is sent to any other servers.
-    - Accessing files outside of Obsidian vaults. The plugin manages the content directory in the local repository and the `git` command.
-- AI agents used in development: Claude 3.7 Sonnet – Opus 4.6, GPT-4o – GPT-5.2, Gemini 3 Pro and Flash
-
-## Related projects
-
-Obsidian plugins:
-- [Enveloppe](https://github.com/Enveloppe/obsidian-enveloppe)
-   - Publishes via the GitHub API rather than a local Git repository.
-   - Has more features and options, including processing of links and dataviews.
-   - Has less flexible filtering of files.
-- [Quartz Syncer](https://github.com/saberzero1/quartz-syncer)
-   - Publishes through authentication to different Git providers.
-   - Has more features, including forntmatter processing and integration with other plugings such as Dataview.
-   - Has less flexible filtering of files.
-- [Digital Garden](https://github.com/oleeskild/obsidian-digital-garden)
-
-Static site generators and other projects:
-- [Quartz](https://github.com/jackyzha0/quartz)
-- [Obsidian Publish](https://obsidian.md/publish)
+The bundled `main.js` is a release artifact and is intentionally not committed to the source branch. The `manifest.json` and `styles.css` source files are in this repository. The original MIT copyright notice remains in [LICENSE](LICENSE).

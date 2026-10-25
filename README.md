@@ -1,10 +1,6 @@
 # Marked Git Publisher for Obsidian
 
-A desktop Obsidian plugin for publishing **only the notes and folders you mark** to a public GitHub repository. The publishing repository stays outside the vault. Nothing is selected when the plugin is first installed.
-
-## Published notes
-
-**[Browse the public notes](notes/)**. If this folder contains only `.gitkeep`, no note has been published yet.
+A desktop Obsidian plugin for publishing **only the notes and folders you mark** to a separate public GitHub repository. The publishing repository stays outside the vault and outside this plugin's source repository. Nothing is selected when the plugin is first installed.
 
 This project is based on [Selective Publisher](https://github.com/Ivan1248/obsidian-selective-publisher) by Ivan Grubišić, under the MIT license. It adds file and folder context menu marking, per-note exclusions inside selected folders, automatic selection updates after rename/delete, optional delayed automatic publishing, and GitHub-friendly links for published notes and images.
 
@@ -25,7 +21,7 @@ The plugin converts Obsidian wiki links to published notes and embedded assets i
 - Install `main.js`, `manifest.json`, and `styles.css` from the matching [release](https://github.com/Avaivartika/obsidian-marked-git-publisher/releases) into `<vault>/.obsidian/plugins/marked-git-publisher/`, then enable it in Community plugins.
 - In the plugin settings, choose the absolute `notes/` path and the target branch. The plugin accepts only a root-level `notes/` directory and refuses a repository inside the Obsidian vault.
 
-The repository may contain the plugin source, README, and other files outside `notes/`. The publisher stages and commits only `notes/`. It manages and may delete files **inside `notes/`**, so keep unrelated files elsewhere. Before every manual push, the preview lists all file additions, changes, and deletions.
+The destination repository may contain a README and other files outside `notes/`. The publisher stages and commits only `notes/`. It manages and may delete files **inside `notes/`**, so keep unrelated files elsewhere. Before every manual push, the preview lists all file additions, changes, and deletions.
 
 No GitHub token is stored by this plugin. It invokes local `git` with the machine's existing authentication. No telemetry or other network service is used.
 

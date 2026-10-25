@@ -1,6 +1,6 @@
 {
   "name": "obsidian-marked-git-publisher",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Mark Obsidian notes and folders for selective public GitHub publishing",
   "main": "main.js",
   "scripts": {

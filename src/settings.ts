@@ -19,5 +19,5 @@ export const DEFAULT_SETTINGS: SelectivePublisherSettings = {
     commitMessage: 'Update published notes',
     showPreviewBeforePublishing: true,
     publishAttachments: true,
-    autoPublish: false,
+    autoPublish: true,
 }

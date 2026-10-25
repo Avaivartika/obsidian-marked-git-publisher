@@ -1,7 +1,7 @@
 {
   "id": "marked-git-publisher",
   "name": "Marked Git Publisher",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "1.4.0",
   "description": "Mark Obsidian notes and folders for selective public GitHub publishing.",
   "author": "Avaivartika; based on Ivan Grubišić",

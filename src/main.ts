@@ -46,13 +46,17 @@ export default class SelectivePublisherPlugin extends Plugin {
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.renameSelection(file, oldPath) }))
         this.registerEvent(this.app.vault.on('delete', file => { void this.deleteSelection(file) }))
         this.registerEvent(this.app.vault.on('modify', file => {
-            if (file instanceof TFile && (this.isNoteSelected(file.path) || file.extension !== 'md')) this.scheduleAutoPublish()
+            if (file instanceof TFile && (this.isNoteSelected(file.path) ||
+                (file.extension !== 'md' && this.getPublishableFiles().some(item => item.path === file.path)))) {
+                this.scheduleAutoPublish()
+            }
         }))
         this.registerEvent(this.app.vault.on('create', file => {
             if (file instanceof TFile && this.isNoteSelected(file.path)) this.scheduleAutoPublish()
         }))
         this.register(() => { if (this.autoTimer) clearTimeout(this.autoTimer) })
         this.addSettingTab(new SelectivePublisherSettingTab(this.app, this))
+        if (this.settings.autoPublish && this.settings.repo !== DEFAULT_SETTINGS.repo) this.scheduleAutoPublish(8000)
     }
 
     isNoteSelected(path: string): boolean {
@@ -74,8 +78,8 @@ export default class SelectivePublisherPlugin extends Plugin {
             this.settings.selectedFiles.push(path)
         }
         await this.saveSettings()
-        this.scheduleAutoPublish()
-        new Notice(`${this.isNoteSelected(path) ? '已标记' : '已移出'}公开同步：${path}`)
+        this.scheduleAutoPublish(8000)
+        new Notice(`${this.isNoteSelected(path) ? '已标记' : '已移出'}公开同步：${path}${this.settings.autoPublish ? '（约 8 秒后同步）' : ''}`)
     }
 
     async toggleFolder(folder: TFolder): Promise<void> {
@@ -86,8 +90,8 @@ export default class SelectivePublisherPlugin extends Plugin {
             this.settings.selectedFolders.push(path)
         }
         await this.saveSettings()
-        this.scheduleAutoPublish()
-        new Notice(`${this.settings.selectedFolders.includes(path) ? '已标记' : '已移出'}公开同步：${path}`)
+        this.scheduleAutoPublish(8000)
+        new Notice(`${this.settings.selectedFolders.includes(path) ? '已标记' : '已移出'}公开同步：${path}${this.settings.autoPublish ? '（约 8 秒后同步）' : ''}`)
     }
 
     private async renameSelection(file: TAbstractFile, oldPath: string): Promise<void> {
@@ -97,7 +101,7 @@ export default class SelectivePublisherPlugin extends Plugin {
         this.settings.selectedFolders = rename(this.settings.selectedFolders)
         this.settings.excludedFiles = rename(this.settings.excludedFiles)
         await this.saveSettings()
-        this.scheduleAutoPublish()
+        this.scheduleAutoPublish(8000)
     }
 
     private async deleteSelection(file: TAbstractFile): Promise<void> {
@@ -106,7 +110,7 @@ export default class SelectivePublisherPlugin extends Plugin {
         this.settings.selectedFolders = this.settings.selectedFolders.filter(keep)
         this.settings.excludedFiles = this.settings.excludedFiles.filter(keep)
         await this.saveSettings()
-        this.scheduleAutoPublish()
+        this.scheduleAutoPublish(8000)
     }
 
     getPublishableFiles(): TFile[] {
@@ -175,13 +179,13 @@ export default class SelectivePublisherPlugin extends Plugin {
         }
     }
 
-    scheduleAutoPublish() {
+    scheduleAutoPublish(delayMs = 30000) {
         if (!this.settings.autoPublish) return
         if (this.autoTimer) clearTimeout(this.autoTimer)
         this.autoTimer = setTimeout(() => {
             this.autoTimer = null
             if (this.settings.autoPublish) void this.publishNotes({ skipPreview: true })
-        }, 30000)
+        }, delayMs)
     }
 
     private async switchToPublishingBranch(): Promise<boolean> {

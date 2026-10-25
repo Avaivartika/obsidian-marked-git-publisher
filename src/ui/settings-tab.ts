@@ -53,7 +53,7 @@ export class SelectivePublisherSettingTab extends PluginSettingTab {
                 this.plugin.settings.showPreviewBeforePublishing = value
                 await this.plugin.saveSettings()
             }))
-        new Setting(containerEl).setName('自动同步').setDesc('关闭时手动预览并发布；开启后，已标记内容修改约 30 秒后自动推送，自动推送不会弹出预览。').addToggle(toggle => toggle
+        new Setting(containerEl).setName('自动同步').setDesc('标记变更约 8 秒后、笔记修改约 30 秒后自动推送。自动推送不会弹出预览。').addToggle(toggle => toggle
             .setValue(this.plugin.settings.autoPublish)
             .onChange(async value => {
                 this.plugin.settings.autoPublish = value

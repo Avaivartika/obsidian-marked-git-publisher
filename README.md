@@ -2,17 +2,21 @@
 
 A desktop Obsidian plugin for publishing **only the notes and folders you mark** to a public GitHub repository. The publishing repository stays outside the vault. Nothing is selected when the plugin is first installed.
 
+## Published notes
+
+**[Browse the public notes](notes/)**. If this folder contains only `.gitkeep`, no note has been published yet.
+
 This project is based on [Selective Publisher](https://github.com/Ivan1248/obsidian-selective-publisher) by Ivan Grubišić, under the MIT license. It adds file and folder context menu marking, per-note exclusions inside selected folders, automatic selection updates after rename/delete, optional delayed automatic publishing, and GitHub-friendly links for published notes and images.
 
 ## How it works
 
 1. Right-click a note or folder in Obsidian and choose **标记…用于 GitHub 公开同步**. Right-click again to remove it. A note inside a marked folder can be excluded individually.
-2. Click the paper-plane icon or run **预览公开同步范围**. Review the added, changed, and removed files.
-3. Choose **推送到 GitHub**. The plugin copies selected notes and referenced attachments to the `notes/` directory of a local Git repository, commits those changes, and pushes the selected branch over your existing Git transport (SSH or HTTPS).
+2. With automatic sync enabled, marking changes publish after about 8 seconds, and edits to marked notes publish about 30 seconds after the last edit. You can also click the paper-plane icon to preview added, changed, and removed files and push manually.
+3. The plugin copies selected notes and referenced attachments to the `notes/` directory of a local Git repository, commits those changes, and pushes the selected branch over your existing Git transport (SSH or HTTPS).
 
 The plugin converts Obsidian wiki links to published notes and embedded assets into relative Markdown links. Links to unpublished notes are rendered as plain text. Publishing is **one-way** from Obsidian to GitHub; edits made on GitHub are not imported into the vault. Unmarking a file removes its published copy on the next publish.
 
-Optional **自动同步** publishes marked changes about 30 seconds after editing. It is off by default. Automatic publishing skips the preview, so enable it only after checking your selection.
+**自动同步** is on by default, so marking a note or folder is enough to publish it. Turn it off in settings if you prefer manual preview and publishing. Automatic publishing skips the preview.
 
 ## Setup
 

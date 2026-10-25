@@ -31,7 +31,7 @@ export default class SelectivePublisherPlugin extends Plugin {
         })
         this.addRibbonIcon('paper-plane', '预览并发布已标记笔记', () => { void this.previewPublishableFiles() })
         this.registerEvent(this.app.workspace.on('file-menu', (menu: Menu, file: TAbstractFile) => {
-            if (file instanceof TFolder && file.path !== '/') {
+            if (file instanceof TFolder && file.path !== '/' && file.path !== '') {
                 const selected = this.settings.selectedFolders.includes(file.path)
                 menu.addItem(item => item.setTitle(selected ? '移出 GitHub 公开同步' : '标记文件夹用于 GitHub 公开同步')
                     .setIcon(selected ? 'circle-minus' : 'cloud-upload')

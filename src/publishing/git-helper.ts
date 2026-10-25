@@ -48,6 +48,24 @@ export class GitHelper {
         }
     }
 
+    static async getCurrentBranch(repoPath: string): Promise<string> {
+        try {
+            // Prints "HEAD" if no branch is checked out
+            const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath })
+            return stdout.trim()
+        } catch (error) {
+            this.handleGitError(repoPath, error, 'get current branch')
+        }
+    }
+
+    static async switchBranch(repoPath: string, branch: string): Promise<void> {
+        try {
+            await execFileAsync('git', ['switch', branch], { cwd: repoPath })
+        } catch (error) {
+            this.handleGitError(repoPath, error, 'switch branch')
+        }
+    }
+
     static async add(repoPath: string): Promise<void> {
         try {
             await execFileAsync('git', ['add', '.'], { cwd: repoPath })

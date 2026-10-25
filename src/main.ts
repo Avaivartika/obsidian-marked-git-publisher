@@ -84,6 +84,8 @@ export default class SelectivePublisherPlugin extends Plugin {
 
     async previewPublishableFiles() {
         try {
+            if (!await this.switchToPublishingBranch()) return
+
             const publishableFiles = await this.getPublishableFiles()
             const fileStatuses = await this.publishingService.getPublishingStatuses(publishableFiles)
             const repoHasUncommittedChanges = await GitHelper.hasUncommittedChanges(this.settings.repo)
@@ -118,10 +120,7 @@ export default class SelectivePublisherPlugin extends Plugin {
                 return
             }
 
-            if (!this.settings.repoBranch) {
-                new Notice('No publishing branch selected. Please check the settings.')
-                return
-            }
+            if (!await this.switchToPublishingBranch()) return
 
             const operationName = commitOnly ? 'commit' : 'publish'
             new Notice(`Starting ${operationName} operation...`)
@@ -141,6 +140,19 @@ export default class SelectivePublisherPlugin extends Plugin {
             console.error('Publishing failed:', error)
             new FailureModal(this.app, error as Error, this.settings.repo).open()
         }
+    }
+
+    private async switchToPublishingBranch(): Promise<boolean> {
+        const branch = this.settings.repoBranch
+        if (!branch) {
+            new Notice('No publishing branch selected. Please check the settings.')
+            return false
+        }
+        if (await GitHelper.getCurrentBranch(this.settings.repo) !== branch) {
+            await GitHelper.switchBranch(this.settings.repo, branch)
+            new Notice(`Switched to branch "${branch}".`)
+        }
+        return true
     }
 
     private async pullFromRemote() {

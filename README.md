@@ -34,3 +34,5 @@ npm run lint
 ```
 
 The bundled `main.js` is a release artifact and is intentionally not committed to the source branch. The `manifest.json` and `styles.css` source files are in this repository. The original MIT copyright notice remains in [LICENSE](LICENSE).
+
+发布 Markdown 时会自动在发布副本中补充 `created` 字段，取自 Obsidian 文件创建时间（已有字段优先保留），不会改写本地正文。博客可据此按创建时间排序，而不是上传时间。

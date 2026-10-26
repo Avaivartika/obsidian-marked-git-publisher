@@ -5,6 +5,7 @@ import * as os from 'os'
 import { Buffer } from 'buffer'
 import { GitHelper } from './git-helper'
 import { FileDiff } from './diff-parser'
+import { withCreationTime } from './metadata'
 
 export enum FileUpdateStatus {
     New = 'new',
@@ -65,7 +66,7 @@ export class PublishingService {
     private async fileBytes(file: TFile): Promise<Buffer> {
         if (file.extension === 'md') {
             const content = await this.app.vault.read(file)
-            return Buffer.from(this.processContent(content, file), 'utf8')
+            return Buffer.from(withCreationTime(this.processContent(content, file), file.stat.ctime), 'utf8')
         }
         return Buffer.from(await this.app.vault.readBinary(file))
     }
